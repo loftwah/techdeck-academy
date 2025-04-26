@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai'
 import { environment } from '../config.js'
 import * as files from './files.js'; // Import file utilities
 import { readAIMemoryRaw } from './ai-memory-manager.js'; // Import memory reader
@@ -22,7 +22,42 @@ const genAI = new GoogleGenerativeAI(apiKey)
 
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }); // Updated model name
 
-// Refactored: Uses aiMemory string instead of StudentProfile object
+// Define the formal schema for the Challenge object using strings
+const ChallengeSchema = {
+  type: 'object', // Use string 'object'
+  properties: {
+    id: { type: 'string', description: "Unique challenge identifier (e.g., CC-001)" },
+    title: { type: 'string', description: "Concise title for the challenge" },
+    description: { type: 'string', description: "Detailed description of the challenge task" },
+    requirements: { 
+      type: 'array', // Use string 'array'
+      items: { type: 'string' }, // Use string 'string'
+      description: "List of specific requirements the solution must meet"
+    },
+    examples: { 
+      type: 'array', 
+      items: { type: 'string' },
+      description: "Illustrative examples of input/output or usage"
+    },
+    hints: { 
+      type: 'array', 
+      items: { type: 'string' },
+      description: "Optional hints to guide the student",
+      nullable: true // Explicitly allow hints to be null or absent
+    },
+    difficulty: { type: 'number', description: "Difficulty rating from 1 to 10" }, // Use string 'number'
+    topics: { 
+      type: 'array', 
+      items: { type: 'string' },
+      description: "List of relevant technical topics covered"
+    },
+    createdAt: { type: 'string', format: "date-time", description: "ISO timestamp of creation" }
+  },
+  // Removed hints from required as it's optional
+  required: ['id', 'title', 'description', 'requirements', 'examples', 'difficulty', 'topics', 'createdAt'] 
+};
+
+// Refactored: generateChallengePrompt - Removed explicit JSON formatting request
 export async function generateChallengePrompt(
   config: Config,
   aiMemory: string, // Changed parameter
@@ -33,7 +68,6 @@ export async function generateChallengePrompt(
     Object.keys(topics).forEach(topic => allTopics.push(topic));
   });
 
-  // Minimal context from config, primary context comes from aiMemory
   const context = {
     recentTopics: recentChallenges.map(c => c.topics).flat(),
     preferredDifficulty: config.difficulty,
@@ -41,7 +75,7 @@ export async function generateChallengePrompt(
     subjectAreas: config.subjectAreas
   };
 
-  // Updated prompt to inject the AI Memory content
+  // Simplified prompt, relies on responseSchema for JSON format
   return `Generate a coding or technical challenge based on the following context:
 
 --- START AI TEACHER'S NOTES ---
@@ -68,15 +102,7 @@ The challenge should:
 5. Include clear requirements and examples.
 6. For coding challenges, provide example inputs and outputs.
 
-Please format the response as a JSON Challenge object with:
-- A unique ID (format: "CC-NNN" where NNN is a three-digit number)
-- Clear title and description
-- Specific requirements list (array of strings)
-- Practical examples (array of strings or objects)
-- Optional hints for guidance (array of strings)
-- Appropriate difficulty rating (1-10) reflecting the generated content
-- Relevant topic tags (array of strings)
-- createdAt (current ISO timestamp)`;
+Think step-by-step to create all the necessary fields for the challenge data structure (id, title, description, requirements, examples, hints, difficulty, topics, createdAt).`;
 }
 
 // Refactored: Uses aiMemory string instead of StudentProfile object
@@ -110,43 +136,55 @@ Please provide feedback as the ${mentorProfile.name} mentor (${mentorProfile.sty
 Format the response as a JSON Feedback object with fields: submissionId, strengths (string[]), weaknesses (string[]), suggestions (string[]), score (number), improvementPath (string), createdAt (ISO timestamp). Ensure the submissionId field is correctly set to "${submission.challengeId}".`;
 }
 
-// Refactored: Uses aiMemory string instead of StudentProfile object
+// Refactored: Uses responseSchema for reliable JSON output
 export async function generateChallenge(
   config: Config,
-  aiMemory: string, // Changed parameter
+  aiMemory: string, 
   recentChallenges: Challenge[]
 ): Promise<Challenge> {
-  const prompt = await generateChallengePrompt(config, aiMemory, recentChallenges); // Pass aiMemory
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
+  const prompt = await generateChallengePrompt(config, aiMemory, recentChallenges);
+  
+  console.log('Generating challenge with structured output schema...');
+  
+  // Correct structure for GenerateContentRequest with schema
+  const request = {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      // generationConfig: {}, // Keep empty or add other configs like temperature if needed
+      // Schema and MimeType are siblings to contents, not inside generationConfig
+      responseMimeType: 'application/json',
+      responseSchema: ChallengeSchema,
+  };
+
+  // Type assertion if needed, or ensure request matches GenerateContentRequest type
+  const result = await model.generateContent(request as any); // Use type assertion or ensure type match
+
+  const response = result.response;
+  // With responseSchema, the text *should* be valid JSON directly
+  // But keep robust parsing just in case.
   let text = response.text();
-  
-  // ... existing JSON extraction and validation ...
-  const jsonRegex = /```json\n([\s\S]*?)\n```/;
-  const match = text.match(jsonRegex);
-  if (match && match[1]) {
-    text = match[1];
-  }
-  
+  console.log('Raw AI JSON response:', text);
+
   let challenge: Challenge;
   try {
+    // Directly parse the text, assuming it's JSON due to schema
     challenge = JSON.parse(text) as Challenge;
   } catch (e) {
-      console.error("Failed to parse Challenge JSON:", e);
-      console.error("Raw AI Response Text:", text);
-      // Attempt to find JSON within potentially messy output
-      const nestedJsonMatch = text.match(/{[\s\S]*}/);
-      if (nestedJsonMatch && nestedJsonMatch[0]) {
+      console.error("Failed to parse Challenge JSON even with schema:", e);
+      console.error("Raw AI Response Text:", text); 
+      // Maybe try basic extraction again as a fallback?
+      const jsonRegex = /{[\s\S]*}/; // More basic regex
+      const match = text.match(jsonRegex);
+       if (match && match[0]) {
           try {
-              console.log("Attempting to parse nested JSON...");
-              challenge = JSON.parse(nestedJsonMatch[0]) as Challenge;
+              console.log("Attempting to parse extracted JSON as fallback...");
+              challenge = JSON.parse(match[0]) as Challenge;
           } catch (nestedE) {
-              console.error("Failed to parse even nested JSON.", nestedE);
-              throw new Error("AI response for challenge generation was not valid JSON.");
+              console.error("Fallback JSON parsing failed.", nestedE);
+              throw new Error("AI response for challenge generation was not valid JSON, even with schema and fallback parsing.");
           }
-      } else {
-          throw new Error("AI response for challenge generation did not contain valid JSON.");
-      }
+       } else {
+           throw new Error("AI response for challenge generation did not contain valid JSON, even with schema.");
+       }
   }
   
   // Ensure the challenge has a valid ID
@@ -176,6 +214,10 @@ export async function generateChallenge(
   if (!Array.isArray(challenge.examples)) challenge.examples = [];
   if (typeof challenge.difficulty !== 'number' || challenge.difficulty < 1 || challenge.difficulty > 10) challenge.difficulty = config.difficulty; // Default to config difficulty
   if (!Array.isArray(challenge.topics)) challenge.topics = [];
+  // Ensure hints is an array if present
+  if (challenge.hints && !Array.isArray(challenge.hints)) challenge.hints = []; 
+  // Add createdAt back if schema didn't enforce it (it should)
+  if (!challenge.createdAt) challenge.createdAt = new Date().toISOString();
 
   return challenge;
 }
