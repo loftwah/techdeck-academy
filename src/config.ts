@@ -20,19 +20,19 @@ export const config: Config = {
   subjectAreas: ['programming', 'devops'],
   topics: {
     programming: {
-      'typescript': { level: 3, relatedTopics: ['javascript', 'type-systems'] },
-      'javascript': { level: 4 },
-      'python': { level: 2, relatedTopics: ['scripting', 'data-science'] }
+      'typescript': { currentLevel: 3, lastTested: '' },
+      'javascript': { currentLevel: 4, lastTested: '' },
+      'python': { currentLevel: 2, lastTested: '' }
     },
     devops: {
-      'docker': { level: 2, relatedTopics: ['containerization'] },
-      'kubernetes': { level: 1, relatedTopics: ['docker', 'orchestration'] },
-      'ci-cd': { level: 3, relatedTopics: ['github-actions', 'jenkins'] }
+      'docker': { currentLevel: 2, lastTested: '' },
+      'kubernetes': { currentLevel: 1, lastTested: '' },
+      'ci-cd': { currentLevel: 3, lastTested: '' }
     },
     aws: {
-      'ec2': { level: 3 },
-      'rds': { level: 2, relatedTopics: ['databases'] },
-      's3': { level: 4 }
+      'ec2': { currentLevel: 3, lastTested: '' },
+      'rds': { currentLevel: 2, lastTested: '' },
+      's3': { currentLevel: 4, lastTested: '' }
     }
     // Add other subject areas and topics as needed
   },
@@ -40,21 +40,25 @@ export const config: Config = {
   sessionLength: 60,
 
   // Style preferences
-  mentorProfile: 'linus', // Default to linus for now
+  mentorProfile: 'linus',
   emailStyle: 'casual',
 
   // Schedule
-  schedule: 'threePerWeek',
+  schedule: {
+    challengeFrequency: 'threePerWeek',
+    digestFrequency: 'weekly'
+  },
 
   // Archive settings
   archive: {
     enabled: true,
-    challengeRetentionDays: 30,
-    submissionRetentionDays: 60,
-    letterRetentionDays: 90,
-    detailedStatsRetentionDays: 180,
-    compactSummariesAutomatically: true,
-    maxActiveFilesPerType: 100
+    maxAgeDays: 90
+  },
+
+  // Notifications
+  notifications: {
+    emailMentions: true,
+    emailErrors: true
   }
 }
 

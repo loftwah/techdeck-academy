@@ -92,6 +92,47 @@ For a more detailed breakdown, see `structure.md`.
     *   **Scheduling:** The `schedule` setting in `config.ts` (e.g., `"daily"`, `"threePerWeek"`, `"weekly"`) determines how often actions like challenge generation should logically occur. The corresponding GitHub Action workflow (e.g., `send-challenge.yml`) might run on a fixed schedule (like daily), but it contains internal logic to check your `config.ts` setting and will only proceed with generating/sending if the configured schedule aligns with the current day.
     *   **Manual Triggers:** Most workflows (like `send-challenge.yml`, `generate-digests.yml`) also include a `workflow_dispatch` trigger. This allows you to **manually run the workflow** at any time directly from the "Actions" tab of your repository on GitHub. This is useful for getting your first challenge immediately or generating a report on demand. Simply navigate to the Actions tab, select the workflow, and click "Run workflow".
 
+## 🔄 Resetting Your Progress
+
+If you want to completely reset your TechDeck Academy progress and start over as if it's your first time (triggering the welcome email again), you need to remove the files and directories that store your state and interaction history.
+
+**Manual Reset Steps:**
+
+1.  **Stop any running workflows (optional but recommended):** If you know workflows might be running, you might want to disable them temporarily in the GitHub Actions tab.
+2.  **Delete the following files and directories from the root of your repository:**
+    *   `student-profile.json` (Stores core metrics and last update time)
+    *   `ai-memory.md` (Stores the AI's narrative notes about you)
+    *   `challenges/` (Contains current challenge files)
+    *   `submissions/` (Contains your submitted solutions)
+    *   `feedback/` (Contains AI feedback files)
+    *   `letters/to-mentor/` (Contains your sent letters)
+    *   `letters/from-mentor/` (Contains AI responses to letters)
+    *   `progress/` (Contains generated digests and potentially stats files)
+    *   `archive/` (Contains all archived data - delete this for a *complete* reset)
+3.  **Commit and Push:** Commit these deletions to your repository.
+
+```bash
+# Example commands (run from your repository root):
+rm -rf student-profile.json ai-memory.md challenges/ submissions/ feedback/ letters/ progress/ archive/
+git add .
+git commit -m "Reset TechDeck Academy progress"
+git push
+```
+
+4.  **Trigger Initialization:** The next time a relevant workflow runs (or if you manually trigger `send-challenge.yml` or another workflow that calls `initialize`), the system should detect the absence of `student-profile.json`, treat it as a first run, and send the welcome email.
+
+**Important:** This process **does not** delete your `config.ts` file, so your learning preferences, topics, schedule, etc., will be preserved.
+
+**Alternative: Reset Script**
+
+You can also use the provided npm script to perform the deletions automatically:
+
+```bash
+npm run reset
+```
+
+After running the script, you will still need to commit and push the changes manually (Step 3 above).
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit pull requests or open issues for bugs, feature requests, or improvements.

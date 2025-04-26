@@ -90,6 +90,19 @@ export async function listSubmissions(challengeId?: string): Promise<string[]> {
   return submissions.map(f => f.replace('.json', ''))
 }
 
+// Feedback operations (Reinstated - needed by index.ts)
+export async function writeFeedback(feedback: Feedback): Promise<void> {
+  const filename = `${feedback.submissionId}.json`; // Feedback is keyed by submissionId
+  const filepath = path.join(PATHS.feedback, filename);
+  await fs.writeFile(filepath, JSON.stringify(feedback, null, 2));
+}
+
+export async function readFeedback(submissionId: string): Promise<Feedback> {
+  const filepath = path.join(PATHS.feedback, `${submissionId}.json`);
+  const content = await fs.readFile(filepath, 'utf-8');
+  return JSON.parse(content) as Feedback;
+}
+
 // Archive operations
 export async function archiveChallenge(challengeId: string): Promise<void> {
   const challenge = await readChallenge(challengeId)
