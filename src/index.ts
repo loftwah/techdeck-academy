@@ -13,7 +13,7 @@ import crypto from 'crypto'
 
 // Initialize the application
 async function initialize(): Promise<StudentProfile> {
-  await files.ensureDirectories()
+  await files.ensureDataDirectories()
   // Load or create the profile, ensuring it's synced with the config
   const studentProfile = await profile.loadOrCreateAndSyncProfile(config);
   
@@ -63,7 +63,7 @@ async function generateChallenge(): Promise<void> {
 
   // Save the challenge
   await files.writeChallenge(challenge)
-  await summary.addChallengeToSummary(challenge)
+  await summary.addActiveChallengeToSummary(challenge)
   await stats.addChallengeStats(challenge)
 
   // Format and send email
@@ -138,7 +138,7 @@ async function archiveOldContent(): Promise<void> {
     if (await files.isFileOlderThan(challengePath, maxAge)) { // Use maxAge
       console.log(`Archiving challenge: ${challengeId}`);
       await files.archiveChallenge(challengeId);
-      await summary.moveChallengeToArchived(challengeId);
+      await summary.archiveChallengeInSummary(challengeId);
     }
   }
 

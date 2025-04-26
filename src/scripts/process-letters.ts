@@ -9,6 +9,7 @@ import * as files from '../utils/files.js'; // For archiving and directory manag
 import { readAIMemoryRaw } from '../utils/ai-memory-manager.js'; // Import memory reader
 import type { StudentProfile, Config, MentorProfile, LetterResponse } from '../types.js';
 import { loadOrCreateAndSyncProfile, setProfileStatusActive, writeStudentProfile } from '../utils/profile-manager.js'; // Use new function
+import { baseTemplateWrapper } from '../utils/email.js'; // Import the wrapper
 
 async function processSingleLetter(letterPath: string, config: Config, aiMemory: string, mentor: MentorProfile, studentStatus: string): Promise<boolean> {
     console.log(`Processing letter: ${letterPath}`);
@@ -38,7 +39,7 @@ async function processSingleLetter(letterPath: string, config: Config, aiMemory:
         // --- 2. Save Mentor Response ---
         const responseFileName = `${path.basename(letterFilename, path.extname(letterFilename))}-response.md`;
         const responseFilePath = path.join(files.PATHS.letters.fromMentor, responseFileName);
-        await files.ensureDirectories(); // Corrected function name
+        await files.ensureDataDirectories(); 
         await fs.writeFile(responseFilePath, mentorResponse.content);
         console.log(`Mentor response saved to: ${responseFilePath}`);
 
@@ -148,31 +149,33 @@ async function main() {
 
         if (failureCount > 0) {
             console.error(`${failureCount} letters failed to process.`);
-            // Consider sending an error email if configured
             if (config.notifications?.emailErrors) {
                 try {
-                    // Format error email content correctly
+                    // Create basic HTML for error email
+                    const errorHtml = `<p>The letter processing script encountered ${failureCount} errors. Please check the server logs for details.</p>`;
                     const errorEmailContent = {
                         subject: 'TechDeck Academy - Letter Processing Errors',
-                        html: baseTemplate(`The letter processing script encountered ${failureCount} errors. Please check the server logs for details.`)
+                        // Use the wrapper for the basic HTML
+                        html: baseTemplateWrapper(errorHtml) 
                     };
                     await email.sendEmail(config, errorEmailContent);
                 } catch (emailError) {
                     console.error("Failed to send error notification email:", emailError);
                 }
             }
-            process.exit(1); // Exit with error code if any letter failed
+            process.exit(1);
         }
 
     } catch (error) {
         console.error("Critical error during letter processing setup:", error);
-        // Consider sending an error email if configured
         if (config.notifications?.emailErrors) {
             try {
-                 // Format critical error email content correctly
-                const criticalErrorEmailContent = {
+                 // Create basic HTML for critical error email
+                 const criticalErrorHtml = `<p>The letter processing script failed during setup. Please check the server logs immediately. Error: ${error instanceof Error ? error.message : String(error)}</p>`;
+                 const criticalErrorEmailContent = {
                     subject: 'TechDeck Academy - CRITICAL Letter Processing Error',
-                    html: baseTemplate(`The letter processing script failed during setup. Please check the server logs immediately. Error: ${error instanceof Error ? error.message : String(error)}`)
+                    // Use the wrapper for the basic HTML
+                    html: baseTemplateWrapper(criticalErrorHtml) 
                 };
                 await email.sendEmail(config, criticalErrorEmailContent);
             } catch (emailError) {
@@ -182,9 +185,6 @@ async function main() {
         process.exit(1);
     }
 }
-
-// Import baseTemplate if needed for error emails
-import { baseTemplate } from '../utils/email.js';
 
 main().catch(err => {
     console.error("Unhandled error in main execution:", err);
