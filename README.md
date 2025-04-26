@@ -6,24 +6,38 @@ Welcome to the open-source version of **TechDeck Academy**! This project provide
 
 ## ✨ Key Features
 
-*   **AI-Generated Challenges:** Automatically creates coding or technical challenges tailored to the user's configured skill level, topics, and preferences, influenced by recent interactions (including letters).
-*   **Personalized Feedback:** AI analyzes submissions and provides constructive feedback based on a chosen mentor persona (e.g., technical, supportive).
-*   **AI Mentor Q&A:** Users can ask questions via markdown files (`letters/to-mentor/`) and receive answers from their chosen AI mentor persona. The AI analyzes the letter for insights to update the student's profile.
-*   **Automated Progress Tracking:** Generates weekly, monthly, and quarterly progress reports (digests).
-*   **Configurable Learning:** Users define subject areas, topics, difficulty, mentor style, and communication schedule via `config.ts`.
-*   **GitHub-Based Workflow:** Leverages GitHub Actions for automation and Git for storing challenges, submissions, feedback, and progress.
-*   **Data Management:** Includes mechanisms for managing and archiving historical data (challenges, submissions, feedback, letters) to keep the repository size manageable.
+*   **AI-Generated Challenges:** Automatically creates coding or technical challenges based on user configuration (`config.ts`) and AI context (`ai-memory.md`). Ensures challenges are relevant and avoid immediate repetition.
+*   **Personalized Feedback:** AI analyzes submissions, providing qualitative feedback (strengths, weaknesses, suggestions) in Markdown format, guided by a chosen mentor persona and user history. AI is prompted to include a score justification within the text, but this score is not stored or processed by the application.
+*   **AI Mentor Q&A:** Users ask questions via markdown files (`letters/to-mentor/`); AI responds based on persona and context, logging insights to `ai-memory.md`. AI is prompted to suggest config changes if appropriate.
+*   **Automated Progress Tracking:** Generates narrative progress summaries (digests) based on `ai-memory.md`.
+*   **User-Controlled Configuration:** `config.ts` is the single source of truth for user settings (topics, difficulty, schedule, mentor). The application syncs the profile to this config but does not automatically change difficulty/topic levels based on performance.
+*   **GitHub-Based Workflow:** Leverages GitHub Actions for automation; Git stores state (profile, memory, challenges, etc.).
+*   **State Management:** Uses `student-profile.json` for minimal essential state (status, completion count, last updated) and `ai-memory.md` for rich, dynamic AI context.
+*   **Data Management:** Archives old interaction files.
 
 ## ⚙️ How It Works
 
-TechDeck Academy operates primarily through a set of GitHub Actions triggered by schedules or repository events (like pushes):
+TechDeck Academy operates primarily through a set of GitHub Actions:
 
-1.  **Configuration (`config.ts`):** The user defines their learning preferences (topics and desired levels, difficulty, preferred challenge types), schedule, and personal details here.
-2.  **Challenge Generation (`send-challenge.yml`):** Based on the schedule in `config.ts`, this action reads the AI's current memory (`ai-memory.md`) and user configuration. It uses Gemini, guided by the memory and preferences, to generate a new challenge relevant to the user's progress, choosing from the user's `preferredChallengeTypes`. The challenge is saved in the `challenges/` directory using a reliable structured output format and emailed to the user via Resend. **Note:** This workflow only generates challenges if the user's profile status is 'active' (see Letter Processing below) or the `introductionSubmitted` flag is set in the config.
-3.  **Submission Processing (`process-submissions.yml`):** When a user pushes a solution to the `submissions/` directory, this action triggers. It reads the AI memory, the challenge, and the submission. It uses Gemini, considering the chosen mentor profile (`src/profiles/`), to analyze the submission and generate feedback contextualized by the student's history in `ai-memory.md`. Feedback is saved in `feedback/`, a summary is appended to `ai-memory.md`, core metrics are updated in the minimal `student-profile.json`, and an email is sent.
-4.  **Letter Processing (`respond-to-letters.yml`):** When a user pushes a question (`.md` file) to `letters/to-mentor/`, this action triggers. It reads the AI memory, the letter, and the selected mentor profile. It uses Gemini to generate a response, leveraging the student's history from `ai-memory.md`. It also analyzes the user's letter for *new* insights (`LetterInsights`). These insights and a summary of the interaction are appended to `ai-memory.md`, the minimal `student-profile.json` timestamp is updated, the response is saved in `letters/from-mentor/`, emailed, and the original letter is archived. **Crucially, if this is the first letter processed and the user hasn't skipped the intro via config, this workflow updates the user's status in `student-profile.json` to 'active', enabling future challenges.**
-5.  **Digest Generation (`generate-digests.yml`):** On a schedule (weekly, monthly, quarterly), this action reads the AI memory (`ai-memory.md`) and basic stats. It uses Gemini to generate a *narrative summary* of recent progress based on the AI memory. This summary, along with core statistics, is saved as a report in the `progress/` subdirectories.
-6.  **File Rotation (`rotate-files.yml`):** Periodically, this action archives older files from `challenges/`, `submissions/`, and `feedback/` into the corresponding `archive/` subdirectories based on `config.ts` settings. Letter archiving is handled by the letter processing workflow.
+1.  **Configuration (`config.ts`):** User defines preferences (topics, levels, difficulty, types), schedule, mentor. **This file is the source of truth for these settings.**
+2.  **Profile Initialization/Sync (`loadOrCreateAndSyncProfile` in `profile-manager.ts`, called by workflows):** Reads `student-profile.json`. If non-existent, creates it using `config.ts` values (userId, name, difficulty -> currentSkillLevel, topics -> topicLevels, initial status based on `introductionSubmitted`). If exists, syncs `userId`, `name`, `topicLevels` from `config.ts`. **Does NOT auto-update `status` or `currentSkillLevel` from config after creation.**
+3.  **Challenge Generation (`send-challenge.yml`):** Runs on schedule/manually. Checks if challenges exist (skips if yes). If user profile `status` is `'active'` (or `introductionSubmitted` is true), calls `ai.generateChallenge`. This function:
+    *   Prompts AI for **Markdown** challenge content (Title, Description, Topics, Requirements, Examples, Hints) based on config and AI memory.
+    *   Parses the AI's Markdown response locally.
+    *   Adds locally generated `id`, `createdAt`, and locally determined `type` and `difficulty` (from config).
+    *   Validates and saves the complete challenge object as a `.json` file in `challenges/`.
+    *   Sends email notification.
+4.  **Submission Processing (`process-submissions.yml`):** Triggered by push to `submissions/`. Calls `ai.generateFeedback`. This function:
+    *   Prompts AI for **Markdown** feedback (Strengths, Weaknesses, Suggestions, Improvement Path), asking it to include score/justification *in the text* and suggest config review if needed.
+    *   Parses the AI's Markdown response locally, **ignoring any score text.**
+    *   Creates a `Feedback` object (no `score` field) with local `submissionId`, `createdAt` and parsed qualitative fields.
+    *   Saves feedback as `.json` in `feedback/`.
+    *   Updates `student-profile.json` (increments `completedChallenges`, updates `lastUpdated`, **no score processing**).
+    *   Updates `ai-memory.md` with a qualitative summary.
+    *   Sends feedback email.
+5.  **Letter Processing (`respond-to-letters.yml`):** Triggered by push to `letters/to-mentor/`. Uses AI to generate response (JSON format for `LetterResponse` including `content` and `insights`), logs insights to `ai-memory.md`, emails `content`, archives letter. **If first letter & `introductionSubmitted` is false, updates profile `status` to `'active'`, enabling challenges.** Also prompts AI to suggest config review if appropriate.
+6.  **Digest Generation (`generate-digests.yml`):** Runs on schedule. Uses AI to generate a *narrative summary* of the entire `ai-memory.md` for the period (weekly/monthly/quarterly). Saves to `progress/`.
+7.  **File Rotation (`rotate-files.yml`):** Periodically archives old challenges, submissions, feedback based on `config.ts`.
 
 ## 📂 Project Structure
 
@@ -32,114 +46,66 @@ The project is organized as follows:
 ```
 techdeck-academy/
 ├── .github/workflows/     # GitHub Actions for automation
-│   ├── respond-to-letters.yml # Handles Q&A and profile updates from letters
-│   └── ... (other workflows)
-├── config.ts              # User configuration (topics, levels, preferences, schedule)
-├── ai-memory.md           # AI's persistent narrative notes about the student (updated automatically)
-├── student-profile.json   # Minimal student profile (core metrics like count, score, last updated)
+│   ├── send-challenge.yml
+│   ├── process-submissions.yml
+│   ├── respond-to-letters.yml # Handles Q&A, profile updates, status change
+│   ├── generate-digests.yml
+│   └── rotate-files.yml
+├── config.ts              # User configuration (topics, levels, difficulty, schedule)
+├── ai-memory.md           # AI's persistent narrative context (updated automatically)
+├── student-profile.json   # Minimal student profile state (status, counters, timestamp)
 ├── src/                   # Source code (TypeScript)
-│   ├── types.ts           # Core type definitions (Challenge, Feedback, Config, etc.)
+│   ├── types.ts           # Core type definitions
+│   ├── schemas.ts         # Zod validation schemas
 │   ├── profiles/          # AI mentor personality definitions (e.g., linus.ts)
 │   ├── utils/             # Helper functions (AI, email, files, managers)
 │   │   ├── ai.ts          # Gemini interactions & prompt generation
-│   │   ├── ai-memory-manager.ts # Manages reading/writing/summarizing ai-memory.md
-│   │   ├── profile-manager.ts # Manages minimal student-profile.json & logs events to AI memory
+│   │   ├── ai-memory-manager.ts # Manages ai-memory.md
+│   │   ├── profile-manager.ts # Manages student-profile.json & profile logic
 │   │   └── ...
-│   └── scripts/           # Scripts executed by workflows (letter processing, reset)
-├── challenges/            # Stores generated challenges
+│   └── scripts/           # Scripts executed by workflows
+├── challenges/            # Stores generated challenges (structured JSON)
 ├── submissions/           # User pushes solutions here
-├── feedback/              # Stores AI-generated feedback
+├── feedback/              # Stores AI-generated feedback (structured JSON, no score)
 ├── letters/               # Stores user questions and mentor responses
-│   ├── to-mentor/         # User pushes questions here (e.g., `question-about-loops.md`)
-│   └── from-mentor/       # AI saves responses here (e.g., `question-about-loops-response.md`)
+│   ├── to-mentor/         # User pushes questions here (.md)
+│   └── from-mentor/       # AI saves responses here (JSON: content + insights)
 ├── archive/               # Stores old data after rotation
-│   └── letters/           # Archived letters
-│       ├── to-mentor/     # Archived original questions
-│       └── from-mentor/   # Archived responses (optional, TBD)
+│   ├── challenges/
+│   ├── submissions/
+│   ├── feedback/
+│   └── letters/
 ├── progress/              # Stores progress digests and stats
-│   ├── stats.json         # Raw statistics
+│   ├── stats.json         # Raw statistics (optional/TBD)
 │   ├── roadmap.md         # User-managed learning roadmap
-│   └── suggested-roadmap.md # AI-suggested roadmap updates
+│   └── ... (digest files: weekly/, monthly/, etc.)
 ├── README.md              # This file
 └── LICENSE                # Project License
 ```
 
-For a more detailed breakdown, see `structure.md`.
-
 ## 🚀 Getting Started
 
-1.  **Fork (Recommended) then Clone:**
-    *   **Fork this repository** to your own GitHub account first. This is essential for running the GitHub Actions automatically and maintaining your personal learning state separate from the main project.
-    *   Then, clone your forked repository to your local machine: `git clone https://github.com/YOUR_USERNAME/techdeck-academy.git`
-2.  **Install Dependencies:**
-    ```bash
-    npm install
-    ```
-3.  **Configure Environment Variables:**
-    *   Create a `.env` file in the root directory.
-    *   Add your API keys:
-        ```dotenv
-        GEMINI_API_KEY=your_google_gemini_api_key
-        RESEND_API_KEY=your_resend_api_key
-        ```
-    *   **Important:** For the GitHub Actions to work, you **must** also configure `GEMINI_API_KEY` and `RESEND_API_KEY` as [GitHub Secrets](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions) in your repository settings.
-4.  **Customize `config.ts`:**
-    *   Open `src/config.ts`.
-    *   Update `userEmail` and `githubUsername` with your details.
-    *   Define your desired learning `topics` and your estimated `currentLevel` (1-10) for each.
-    *   Adjust `difficulty`, `preferredChallengeTypes`, `mentorProfile`, `emailStyle`, and `schedule` according to your preferences.
-    *   Review the `archive` settings.
-    *   **Starting Challenges (Automatic vs Manual):**
-        *   **Automatic (Recommended):** Leave `introductionSubmitted: false`. Challenges will automatically start after you submit your *first* letter (e.g., an introduction) to the `letters/to-mentor/` directory and it is successfully processed by the `respond-to-letters.yml` workflow.
-        *   **Manual Skip:** If you want to skip writing an introductory letter and start challenges immediately, set `introductionSubmitted: true`.
-5.  **Write First Letter (Optional but Recommended):**
-    *   Create a markdown file (e.g., `introduction.md`, `my-goals.md`) in the `letters/to-mentor/` directory outlining your background, goals, or any initial questions.
-    *   Push this file to your repository.
-    *   The `respond-to-letters.yml` workflow will process it: generate an AI response, email it to you, update the AI's memory (`ai-memory.md`), and archive your original letter.
-    *   **If this is your first letter and `introductionSubmitted` was `false` in your config, this action will automatically update your profile status, enabling challenges to be sent by the `send-challenge.yml` workflow on its next run.**
-6.  **Initial Commit & Push:** Commit your changes (especially to `config.ts` and potentially `.env` *if* you add it to `.gitignore` - recommended) and push to your repository.
-7.  **Enable & Understand GitHub Actions:**
-    *   Ensure GitHub Actions are enabled for your repository (usually default).
-    *   **Challenge Scheduling (`send-challenge.yml`):** This workflow runs on a schedule (or manually). It will only generate a challenge if a) your profile status is 'active' (set automatically after your first letter is processed) OR b) you have manually set `introductionSubmitted: true` in `config.ts`, AND c) the timing aligns with your configured `challengeFrequency`.
-    *   **Manual Triggers:** Most workflows (like `send-challenge.yml`, `generate-digests.yml`, `respond-to-letters.yml`) include a `workflow_dispatch` trigger. This allows you to manually run them from the "Actions" tab. This is useful for processing a letter immediately or getting your first challenge sooner after your first letter has been processed (or after setting the config flag).
+1.  **Fork & Clone:** Fork to your GitHub, then clone your fork.
+2.  **Install:** `npm install`
+3.  **API Keys:** Create `.env` with `GEMINI_API_KEY` and `RESEND_API_KEY`. **Crucially, also add these as GitHub Secrets in your repo settings.**
+4.  **Customize `config.ts`:** Set `userEmail`, `githubUsername`, `topics` & `currentLevel`, `difficulty`, `mentorProfile`, etc. Decide on `introductionSubmitted` (default `false` recommended).
+5.  **First Letter (if `introductionSubmitted: false`):** Create `.md` file in `letters/to-mentor/` with intro/goals. Commit & push.
+6.  **Commit & Push Config:** Commit `config.ts` (and `.gitignore` if `.env` added). Push.
+7.  **Enable & Understand Actions:** Check Actions tab. `send-challenge.yml` needs `status: 'active'` (set after first letter OR via `introductionSubmitted: true`). Use `workflow_dispatch` for manual runs if needed.
 
 ## 🔄 Resetting Your Progress
 
-If you want to completely reset your TechDeck Academy progress and start over as if it's your first time (triggering the welcome email again), you need to remove the files and directories that store your state and interaction history.
-
-**Manual Reset Steps:**
-
-1.  **Stop any running workflows (optional but recommended):** If you know workflows might be running, you might want to disable them temporarily in the GitHub Actions tab.
-2.  **Delete the following files and directories from the root of your repository:**
-    *   `student-profile.json` (Stores core metrics)
-    *   `ai-memory.md` (Stores AI notes)
-    *   `challenges/` (Contains current challenge files)
-    *   `submissions/` (Contains your submitted solutions)
-    *   `feedback/` (Contains AI feedback files)
-    *   `letters/to-mentor/` (Contains your sent letters)
-    *   `letters/from-mentor/` (Contains AI responses to letters)
-    *   `progress/` (Contains generated digests and potentially stats files)
-    *   `archive/` (Contains all archived data - delete this for a *complete* reset)
-3.  **Commit and Push:** Commit these deletions to your repository.
-
-**Alternative: Reset Script**
-
-You can also use the provided npm script to perform the deletions automatically:
+To reset (delete state files), use:
 
 ```bash
 npm run reset
 ```
-This script will:
-1.  Ask for confirmation before proceeding.
-2.  Delete the same files and directories listed in Manual Step 2.
-3.  Print a reminder of the deleted items.
-
-**Important:** After running the reset script, you **still need to manually commit and push** the changes to finalize the reset. Resetting will clear your profile status, meaning you will need to submit a new first letter (or set the `introductionSubmitted` flag) to start challenges again.
+**Then commit and push the deletions.** This clears `student-profile.json`, `ai-memory.md`, `challenges/`, `submissions/`, `feedback/`, `letters/`, `progress/`, `archive/`. You'll need to restart the introduction flow (submit first letter or set config flag) to get challenges again.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit pull requests or open issues for bugs, feature requests, or improvements.
+Contributions welcome! Please open issues or PRs.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file.
