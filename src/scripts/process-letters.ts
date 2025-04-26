@@ -15,6 +15,14 @@ async function processSingleLetter(letterPath: string, config: Config, aiMemory:
     try {
         const letterContent = await fs.readFile(letterPath, 'utf-8');
 
+        // Basic content validation
+        if (!letterContent || letterContent.trim().length === 0) {
+            console.warn(`Skipping empty letter file: ${letterPath}`);
+            // Should we archive empty files? For now, just skip.
+            return false; // Indicate failure/skip
+        }
+        // TODO: Add size check? e.g., if (letterContent.length > MAX_LETTER_SIZE) ...
+
         // --- 1. Generate AI Response ---
         const recentCorrespondence: string[] = []; // Placeholder for now
         const mentorResponse = await ai.generateLetterResponse(
@@ -85,8 +93,14 @@ async function main() {
         // Load necessary context once
         const mentorProfile = await profileManager.loadMentorProfile(config.mentorProfile);
         const aiMemory = await readAIMemoryRaw(); // Read AI memory once
-        // Pass config to readStudentProfile
         let studentProfile = await profileManager.readStudentProfile(config); // Read profile once at start
+
+        // Check if profile loaded
+        if (!studentProfile) {
+            console.error("CRITICAL: Failed to load or validate student profile. Cannot process letters.");
+            // TODO: Send error email?
+            process.exit(1); // Exit with error
+        }
 
         if (!mentorProfile) {
             // loadMentorProfile logs a warning and returns a default, so this check might not be strictly needed
@@ -114,7 +128,7 @@ async function main() {
 
             // Pass aiMemory AND student status instead of profile snapshot
             // Provide default status if somehow undefined after reading
-            const success = await processSingleLetter(letterPath, config, aiMemory, mentorProfile, studentProfile.status || 'awaiting_introduction');
+            const success = await processSingleLetter(letterPath, config, aiMemory, mentorProfile, studentProfile.status);
             if (success) {
                 successCount++;
                 // --- Check if this was the first interaction ---
@@ -122,16 +136,21 @@ async function main() {
                     console.log('First letter successfully processed, setting profile status to active.');
                     // Pass config to setProfileStatusActive
                     await profileManager.setProfileStatusActive(config);
-                    // Reload profile state ONLY IF absolutely necessary for subsequent loops (unlikely here)
-                    // studentProfile = await profileManager.readStudentProfile(config); 
+                    // Reload profile state ONLY IF status change affects subsequent letters in THIS batch
+                    // Reading again to get the updated status
+                    const updatedProfile = await profileManager.readStudentProfile(config);
+                    if (!updatedProfile) { // Check again, though unlikely to fail now
+                         console.error("CRITICAL: Failed to reload profile after status update. Exiting.");
+                         process.exit(1);
+                    }
+                    studentProfile = updatedProfile; 
                 }
             } else {
                 failureCount++;
             }
         }
 
-        console.log(`
-Processing complete. Success: ${successCount}, Failures: ${failureCount}`);
+        console.log(`\nProcessing complete. Success: ${successCount}, Failures: ${failureCount}`);
 
         if (failureCount > 0) {
             console.error(`${failureCount} letters failed to process.`);

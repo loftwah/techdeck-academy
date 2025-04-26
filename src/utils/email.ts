@@ -115,10 +115,24 @@ export const baseTemplate = (content: string) => `
 </html>
 `
 
-// Convert markdown to styled HTML
+// Convert markdown to styled HTML with fallback
 const markdownToHtml = async (markdown: string): Promise<string> => {
-  return await marked.parse(markdown)
-}
+  try {
+      // Ensure markdown is a string before parsing
+      if (typeof markdown !== 'string') {
+          console.warn('markdownToHtml received non-string input, returning empty string.');
+          return '';
+      }
+      return await marked.parse(markdown); // Use the configured marked instance
+  } catch (error) {
+      console.error("Markdown parsing failed:", error);
+      console.error("Original Markdown content:", markdown); // Log the problematic markdown
+      // Fallback: Return the original markdown wrapped in <pre> tags
+      // Escape the markdown content to prevent potential HTML injection in the fallback
+      const escapedMarkdown = escapeHtml(markdown);
+      return `<p style="color: red; font-weight: bold;">Error rendering email content. Displaying raw content:</p><pre style="background-color: #eee; padding: 10px; border: 1px solid #ccc; white-space: pre-wrap; word-wrap: break-word;">${escapedMarkdown}</pre>`;
+  }
+};
 
 // Get appropriate greeting based on email style
 const getGreeting = (style: EmailStyle): string => {
@@ -134,41 +148,52 @@ const getGreeting = (style: EmailStyle): string => {
   }
 }
 
+// --- NEW Email Formatting Helpers ---
+
+// Creates a standard section with a heading
+function createEmailSection(title: string, content: string, headingLevel: number = 2): string {
+    if (!content || content.trim() === '' || content.trim() === 'None') return ''; // Don't render empty sections
+    return `\n## ${title}\n${content}\n`;
+}
+
+// Creates a markdown bulleted list from an array
+function createBulletedList(items: string[]): string {
+    if (!items || items.length === 0) return 'None provided';
+    return items.map(item => `- ${item}`).join('\n');
+}
+
+// Creates a markdown code block
+function createCodeBlock(content: string, language: string = ''): string {
+    return `\`\`\`${language}\n${content}\n\`\`\``;
+}
+
+// --- Refactored Email Formatters ---
+
 export async function formatChallengeEmail(
   challenge: Challenge,
   emailStyle: EmailStyle
 ): Promise<{ subject: string; html: string }> {
-  // Format examples properly
-  const formattedExamples = challenge.examples.map(ex => {
-    // If example is an object, format it properly
-    if (typeof ex === 'object' && ex !== null) { // Check for null too
-      return `\`\`\`json\n${JSON.stringify(ex, null, 2)}\n\`\`\``; // Add json tag
-    }
-    return `\`\`\`\n${ex}\n\`\`\``;
-  }).join('\n\n');
+  const formattedExamples = challenge.examples && challenge.examples.length > 0
+    ? challenge.examples.map(ex => createCodeBlock(typeof ex === 'object' ? JSON.stringify(ex, null, 2) : ex, typeof ex === 'object' ? 'json' : '')).join('\n\n')
+    : 'None provided';
 
-  const markdown = `
-${getGreeting(emailStyle)}
+  let markdown = getGreeting(emailStyle);
+  markdown += `\n\n# ${challenge.title}\n\n${challenge.description}`; // Main title and description
+  
+  markdown += createEmailSection('Requirements', createBulletedList(challenge.requirements));
+  markdown += createEmailSection('Examples', formattedExamples);
+  if (challenge.hints && challenge.hints.length > 0) {
+      markdown += createEmailSection('Hints', createBulletedList(challenge.hints));
+  }
+  
+  const submissionInstructions = [
+      `Create your solution (filename should include the challenge ID: ${challenge.id})`, // Add ID instruction
+      `Save it in the \`submissions/\` directory`, // Use backticks for code style
+      `Commit and push your changes`
+  ];
+  markdown += createEmailSection('Submission Instructions', submissionInstructions.map((item, index) => `${index + 1}. ${item}`).join('\n'), 2);
 
-# ${challenge.title}
-
-${challenge.description}
-
-## Requirements
-${challenge.requirements.map(req => `- ${req}`).join('\n')}
-
-## Examples
-${formattedExamples} // Use the formatted examples
-
-${challenge.hints ? `## Hints\n${challenge.hints.map(hint => `- ${hint}`).join('\n')}` : ''}
-
-## Submission Instructions
-1. Create your solution (filename should include the challenge ID: ${challenge.id}) // Add ID instruction
-2. Save it in the \`submissions/\` directory
-3. Commit and push your changes
-
-Good luck! 🚀
-`
+  markdown += '\n\nGood luck! 🚀';
 
   return {
     subject: `New Challenge: ${challenge.title}`,
@@ -182,27 +207,16 @@ export async function formatFeedbackEmail(
   challenge: Challenge,
   emailStyle: EmailStyle
 ): Promise<{ subject: string; html: string }> {
-  const markdown = `
-${getGreeting(emailStyle)}
+  let markdown = getGreeting(emailStyle);
+  markdown += `\n\n# Feedback for: ${challenge.title}`;
 
-# Feedback for: ${challenge.title}
+  markdown += createEmailSection('Score', `${feedback.score}/100`, 2);
+  markdown += createEmailSection('Strengths', createBulletedList(feedback.strengths), 2);
+  markdown += createEmailSection('Areas for Improvement', createBulletedList(feedback.weaknesses), 2);
+  markdown += createEmailSection('Suggestions', createBulletedList(feedback.suggestions), 2);
+  markdown += createEmailSection('Next Steps', feedback.improvementPath, 2);
 
-## Score: ${feedback.score}/100
-
-## Strengths
-${feedback.strengths.map(s => `- ${s}`).join('\n')}
-
-## Areas for Improvement
-${feedback.weaknesses.map(w => `- ${w}`).join('\n')}
-
-## Suggestions
-${feedback.suggestions.map(s => `- ${s}`).join('\n')}
-
-## Next Steps
-${feedback.improvementPath}
-
-Keep up the great work! 💪
-`
+  markdown += '\n\nKeep up the great work! 💪';
 
   return {
     subject: `Feedback: ${challenge.title}`,
@@ -362,78 +376,78 @@ ${mentorName}
   };
 }
 
-// Add error handling wrapper for email sending
-export async function sendEmailWithRetry(
+function validateEmailContent(content: { subject: string; html: string }): void {
+  if (!content.subject || typeof content.subject !== 'string' || content.subject.trim() === '') {
+    throw new Error('Email subject is missing or invalid.');
+  }
+  if (!content.html || typeof content.html !== 'string' || content.html.trim() === '') {
+    throw new Error('Email HTML content is missing or invalid.');
+  }
+  // Basic check for potentially malformed HTML (very basic)
+  if (!content.html.includes('<html') || !content.html.includes('</body>')) {
+    console.warn('Email HTML content might be missing basic structure.');
+  }
+}
+
+// Updated sendEmail function with integrated retry logic
+export async function sendEmail(
   config: Config,
   content: { subject: string; html: string },
   maxRetries = 3,
-  retryDelay = 1000
+  retryDelay = 1500 // Slightly increased delay
 ): Promise<void> {
-  let lastError: Error | null = null
-  
+  // 1. Validate Content
+  try {
+    validateEmailContent(content);
+  } catch (validationError) {
+    console.error("Email content validation failed:", validationError);
+    // Do not attempt to send invalid content
+    throw validationError; 
+  }
+
+  const mailOptions = {
+    from: 'TechDeck Academy <academy@techdeck.life>', // Replace with your verified sender
+    to: config.userEmail,
+    subject: content.subject,
+    html: content.html,
+  };
+
+  // 2. Attempt Sending with Retry
+  let lastError: Error | null = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      await sendEmail(config, content)
-      return
+      console.log(`Attempting to send email (Attempt ${attempt}/${maxRetries}): "${content.subject}" to ${config.userEmail}`);
+      const { data, error } = await resend.emails.send(mailOptions);
+
+      if (error) {
+        // Treat Resend's error object as the error to handle
+        throw error; 
+      }
+
+      // Success
+      console.log(`Email sent successfully! ID: ${data?.id}`);
+      return; // Exit function on success
+
     } catch (error) {
-      lastError = error as Error
-      console.error(`Email sending attempt ${attempt} failed:`, error)
-      
-      if (attempt < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, retryDelay * attempt))
-      }
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.error(`Email send attempt ${attempt}/${maxRetries} failed:`, lastError);
+
+        // TODO: Check for specific non-retryable error codes from Resend if needed
+        // if (isPermanentResendError(error)) { break; } 
+
+        if (attempt < maxRetries) {
+            console.log(`Retrying email send in ${retryDelay / 1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+        } else {
+            console.error("Max retries reached for sending email.");
+        }
     }
   }
 
-  throw new Error(`Failed to send email after ${maxRetries} attempts. Last error: ${lastError?.message}`)
-}
-
-// Add email validation helper
-function validateEmailContent(content: { subject: string; html: string }): void {
-  if (!content.subject || typeof content.subject !== 'string') {
-    throw new Error('Email subject is required and must be a string')
-  }
-  
-  if (!content.html || typeof content.html !== 'string') {
-    throw new Error('Email HTML content is required and must be a string')
-  }
-  
-  if (content.subject.length > 100) {
-    throw new Error('Email subject is too long (max 100 characters)')
-  }
-  
-  if (content.html.length > 100000) {
-    throw new Error('Email HTML content is too long (max 100KB)')
-  }
-}
-
-// Update the sendEmail function with validation
-export async function sendEmail(
-  config: Config,
-  content: { subject: string; html: string }
-): Promise<void> {
-  // Validate email content before sending
-  validateEmailContent(content)
-
-  try {
-    await resend.emails.send({
-      from: 'TechDeck Academy <academy@techdeck.life>',
-      to: [config.userEmail],
-      subject: content.subject,
-      html: content.html,
-    })
-  } catch (error) {
-    // Add more specific error handling
-    if (error instanceof Error) {
-      if (error.message.includes('rate limit')) {
-        throw new Error('Email rate limit exceeded. Please try again later.')
-      } else if (error.message.includes('invalid email')) {
-        throw new Error(`Invalid email address: ${config.userEmail}`)
-      } else if (error.message.includes('unauthorized')) {
-        throw new Error('Invalid API key or authentication failed')
-      }
-    }
-    throw error
+  // If loop finishes, all retries failed
+  if (lastError) {
+    // Optional: Send notification about persistent email failure?
+    throw new Error(`Failed to send email "${content.subject}" after ${maxRetries} attempts: ${lastError.message}`);
   }
 }
 

@@ -1,7 +1,7 @@
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, FunctionDeclarationSchema } from '@google/generative-ai'
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, FunctionDeclarationSchema, FunctionCallingMode } from '@google/generative-ai'
 import { environment } from '../config.js'
 import * as files from './files.js'; // Import file utilities
-import { readAIMemoryRaw } from './ai-memory-manager.js'; // Import memory reader
+import { readAIMemoryRaw, updateAIMemory } from './ai-memory-manager.js'; // Import memory reader
 import * as profile from './profile-manager.js'; // Import profile manager for loadMentorProfile
 import type { 
   Challenge, 
@@ -10,8 +10,11 @@ import type {
   Config, 
   Submission, 
   MentorProfile,
-  LetterResponse
+  LetterResponse,
+  ChallengeType
 } from '../types.js'
+// Import Zod schemas
+import { ChallengeSchema as ZodChallengeSchema, FeedbackSchema as ZodFeedbackSchema } from '../schemas.js';
 
 // Initialize Gemini AI
 const apiKey = environment.GEMINI_API_KEY
@@ -22,9 +25,59 @@ const genAI = new GoogleGenerativeAI(apiKey)
 
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }); // Updated model name
 
+// Helper type for prompt sections
+type PromptSection = { title: string; content: string; markdownFormat?: 'codeblock' | 'blockquote' | 'notes' };
+
+// Simple Prompt Building Helper Function
+function buildPrompt(
+    persona: { name: string; style: string; tone: string } | null, // Allow null if no specific persona
+    taskDescription: string,
+    contextSections: PromptSection[],
+    instructions: string[],
+    outputFormatDescription: string
+): string {
+    let prompt = persona 
+        ? `You are the ${persona.name} mentor (${persona.style}, ${persona.tone}).\n\n`
+        : '';
+
+    prompt += `${taskDescription}\n`;
+
+    if (contextSections.length > 0) {
+        prompt += `\n--- CONTEXT ---`;
+        for (const section of contextSections) {
+            prompt += `\n## ${section.title}\n`;
+            if (section.markdownFormat === 'notes') {
+                prompt += `--- START ${section.title.toUpperCase()} ---\n${section.content}\n--- END ${section.title.toUpperCase()} ---\n`;
+            } else if (section.markdownFormat === 'codeblock') {
+                // Determine language hint if possible (simple heuristic)
+                const lang = section.title.toLowerCase().includes('submission') ? '' : ''; // Could add more hints
+                prompt += `\`\`\`${lang}\n${section.content}\n\`\`\`\n`;
+            } else {
+                prompt += `${section.content}\n`; // Default: plain text
+            }
+        }
+        prompt += `--- END CONTEXT ---\n`;
+    }
+
+    if (instructions.length > 0) {
+        prompt += `\n--- INSTRUCTIONS ---`;
+        instructions.forEach((inst, index) => {
+            prompt += `\n${index + 1}. ${inst}`;
+        });
+        prompt += `\n--- END INSTRUCTIONS ---\n`;
+    }
+
+    prompt += `\n--- OUTPUT FORMAT ---`;
+    prompt += `\n${outputFormatDescription}`; // Describe desired format
+    prompt += `\n--- END OUTPUT FORMAT ---`;
+
+    return prompt;
+}
+
 // Define the formal schema for the Challenge object
+// Keeping the schema definition for potential future use, but won't enforce function call for now
 const ChallengeSchema = {
-  type: 'object',
+  type: 'object', 
   properties: {
     id: { type: 'string', description: "Unique challenge identifier (e.g., CC-001)" },
     title: { type: 'string', description: "Concise title for the challenge" },
@@ -55,120 +108,100 @@ const ChallengeSchema = {
     },
     createdAt: { type: 'string', format: "date-time", description: "ISO timestamp of creation" }
   },
-  required: ['id', 'title', 'description', 'difficulty', 'topics', 'createdAt'] 
+  required: ['title', 'description', 'difficulty', 'topics'] 
 };
 
-// Updated generateChallengePrompt to handle flattened topics and remove subjectAreas
+// Updated generateChallengePrompt to use buildPrompt helper
 export async function generateChallengePrompt(
   config: Config,
   aiMemory: string,
   recentChallenges: Challenge[]
 ): Promise<string> {
-  // Get all configured topics directly from the flattened structure
   const allTopics: string[] = Object.keys(config.topics); 
-
-  // --- Select Challenge Type ---
-  // Default to coding if not specified or empty
   const availableTypes = config.preferredChallengeTypes && config.preferredChallengeTypes.length > 0 
                          ? config.preferredChallengeTypes 
                          : ['coding'];
-  // Simple random selection for now
   const selectedType = availableTypes[Math.floor(Math.random() * availableTypes.length)];
-  console.log(`Selected challenge type: ${selectedType}`); // Log selected type
+  console.log(`Selected challenge type: ${selectedType}`);
 
-  const context = {
-    recentTopics: recentChallenges.map(c => c.topics).flat(),
-    preferredDifficulty: config.difficulty,
-    allConfiguredTopics: allTopics, // Use flattened list
-  };
+  const contextSections: PromptSection[] = [
+    { title: 'AI Teacher Notes', content: aiMemory, markdownFormat: 'notes' },
+    { 
+        title: 'Student Preferences & Configuration', 
+        content: `Configured Topics & Levels: ${JSON.stringify(config.topics)}\nAll Available Topics: ${allTopics.join(', ')}\nPreferred Difficulty: ${config.difficulty}/10\nRecent Challenge Topics (Avoid direct repeats): ${recentChallenges.map(c => c.topics).flat().join(', ') || 'No recent challenges'}\nPreferred Challenge Types: ${availableTypes.join(', ')}`
+    }
+  ];
 
-  // --- Build Prompt with Type-Specific Instructions ---
-  // References the definitions now included in the main aiMemory context
-  let prompt = `Generate a challenge of type: **${selectedType}** (refer to System Definitions in notes if needed) based on the following context:
+  const instructions = [
+    `Base the challenge on the student's progress documented in the Teacher's Notes and their preferences, considering the configured topics and their levels.`, // General instruction first
+    `Generate a challenge of type: **${selectedType}**.`,
+    `Adhere to the standard Challenge JSON schema structure.`,
+    `Ensure difficulty aligns with student notes and preferred difficulty (${config.difficulty}/10).`,
+    `Address weaknesses and build on strengths identified in the AI Teacher Notes.`,
+    `Avoid directly repeating recent challenge topics.`,
+    `Fill optional fields (hints, requirements, examples) only if appropriate for the selected type **${selectedType}**.`
+  ];
 
---- START AI TEACHER'S NOTES ---
-${aiMemory} 
---- END AI TEACHER'S NOTES ---
-
-Student Preferences & Configuration:
-Configured Topics & Levels: ${JSON.stringify(config.topics)} 
-All Available Topics: ${context.allConfiguredTopics.join(', ')}
-Preferred Difficulty: ${context.preferredDifficulty}/10
-Recent Challenge Topics (Avoid direct repeats): ${context.recentTopics.join(', ') || 'No recent challenges'}
-Preferred Challenge Types: ${availableTypes.join(', ')}
-
-Base the challenge on the student's progress documented in the Teacher's Notes and their preferences, considering the configured topics and their levels.
-`;
-
-  // Add concise type-specific generation reminders (full definitions are in memory)
+  // Add type-specific reminders to instructions
   switch (selectedType) {
-    case 'coding':
-      prompt += `\nReminder for 'coding': Focus on problem statement, requirements, examples.`;
-      break;
-    case 'iac':
-      prompt += `\nReminder for 'iac': Focus on task description, resources, example outputs.`;
-      break;
-    case 'question':
-      prompt += `\nReminder for 'question': Focus on clear question in description; requirements/examples likely empty.`;
-      break;
-    case 'mcq':
-      prompt += `\nReminder for 'mcq': Question in description, options in examples.`;
-      break;
-    case 'design':
-       prompt += `\nReminder for 'design': Scenario in description, constraints/focus in requirements.`;
-       break;
-     case 'casestudy':
-       prompt += `\nReminder for 'casestudy': Case study in description, questions in requirements.`;
-       break;
-     case 'project':
-       prompt += `\nReminder for 'project': Project outline in description, steps in requirements.`;
-       break;
-    default:
-      prompt += `\nReminder for default: Generate a standard coding challenge.`;
+    case 'coding': instructions.push(`Reminder for 'coding': Focus on problem statement, requirements, examples.`); break;
+    case 'iac': instructions.push(`Reminder for 'iac': Focus on task description, resources, example outputs.`); break;
+    case 'question': instructions.push(`Reminder for 'question': Focus on clear question in description; requirements/examples likely empty.`); break;
+    case 'mcq': instructions.push(`Reminder for 'mcq': Question in description, options in examples.`); break;
+    case 'design': instructions.push(`Reminder for 'design': Scenario in description, constraints/focus in requirements.`); break;
+    case 'casestudy': instructions.push(`Reminder for 'casestudy': Case study in description, questions in requirements.`); break;
+    case 'project': instructions.push(`Reminder for 'project': Project outline in description, steps in requirements.`); break;
+    default: instructions.push(`Reminder for default: Generate a standard coding challenge.`);
   }
 
-  prompt += `\n\nGeneral Requirements:
-- Adhere to the standard Challenge JSON schema structure.
-- Ensure difficulty aligns with student notes.
-- Address weaknesses and build on strengths from notes.
-- Avoid recent topics.
-- Fill optional fields (hints, requirements, examples) only if appropriate for the selected type **${selectedType}**.`; // Emphasize type
+  const outputFormatDescription = "Respond ONLY with the JSON object adhering to the Challenge schema.";
+  // We are temporarily not enforcing schema via function calling, but still describe it.
 
-  return prompt;
+  return buildPrompt(
+      null, // No specific mentor persona for challenge generation
+      `Generate a ${selectedType} challenge.`, // Task Description
+      contextSections,
+      instructions,
+      outputFormatDescription
+  );
 }
 
 // Refactored: Uses aiMemory string instead of StudentProfile object
 export async function generateFeedbackPrompt(
   challenge: Challenge,
   submission: Submission,
-  aiMemory: string, // Changed parameter
+  aiMemory: string,
   mentorProfile: MentorProfile
 ): Promise<string> {
-  // Updated prompt to inject the AI Memory content
-  return `Review this code submission with the following context:
-Challenge: ${challenge.title}
-Requirements: ${challenge.requirements.join('\n')}
+  const contextSections: PromptSection[] = [
+      { title: 'Challenge Details', content: `Title: ${challenge.title}\nRequirements:\n${challenge.requirements.join('\n')}` },
+      { title: 'AI Teacher Notes', content: aiMemory, markdownFormat: 'notes' },
+      { title: 'Student Submission', content: submission.content, markdownFormat: 'codeblock' }
+  ];
 
---- START AI TEACHER'S NOTES ---
-${aiMemory}
---- END AI TEACHER'S NOTES ---
+  const instructions = [
+      `Review the student submission based on the challenge details and the student's history in the AI Teacher Notes.`,
+      `Provide key strengths of the implementation in relation to the student's progress.`,
+      `Identify areas for improvement, considering patterns noted in the memory.`,
+      `Give specific suggestions for better approaches or refinements.`,
+      `Provide a numerical score out of 100.`,
+      `Recommend concrete next steps for improvement, relevant to the student's history.`
+  ];
 
-Submission Content:
-\`\`\`
-${submission.content}
-\`\`\`
+  const outputFormatDescription = `Format the response as a single JSON object matching the Feedback schema: { submissionId: string (use "${submission.challengeId}"), strengths: string[], weaknesses: string[], suggestions: string[], score: number, improvementPath: string, createdAt: string (ISO timestamp) }. Respond ONLY with this JSON object.`;
 
-Please provide feedback as the ${mentorProfile.name} mentor (${mentorProfile.style}, ${mentorProfile.tone}) using the AI Teacher's Notes for context on the student's journey. The feedback should include:
-1. Key strengths of the implementation in relation to the student's progress.
-2. Areas for improvement, considering patterns noted in the memory.
-3. Specific suggestions for better approaches.
-4. A score out of 100.
-5. Recommended next steps for improvement, relevant to the student's history.
-
-Format the response as a JSON Feedback object with fields: submissionId, strengths (string[]), weaknesses (string[]), suggestions (string[]), score (number), improvementPath (string), createdAt (ISO timestamp). Ensure the submissionId field is correctly set to "${submission.challengeId}".`;
+  return buildPrompt(
+      mentorProfile, // Pass the mentor persona
+      `Provide feedback on a student submission.`, // Task Description
+      contextSections,
+      instructions,
+      outputFormatDescription
+  );
 }
 
 // Fixed version of the generateChallenge function
+// TEMPORARILY REVERTED Function Calling parsing due to TS type issues
+// TODO: Revisit Function Calling implementation for robust JSON parsing
 export async function generateChallenge(
   config: Config,
   aiMemory: string, 
@@ -176,65 +209,85 @@ export async function generateChallenge(
 ): Promise<Challenge> {
   const prompt = await generateChallengePrompt(config, aiMemory, recentChallenges);
   
-  console.log('Generating challenge with structured output schema...');
+  console.log('Generating challenge...'); // Removed mention of schema temporarily
   
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 1000; // 1 second
   let result;
-  try {
-      // Fixed request structure for Node.js SDK
-      result = await model.generateContent({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: {
-              temperature: 0.7,
-          },
-          tools: [{
-              functionDeclarations: [{
-                  name: "generateChallenge",
-                  description: "Generate a coding challenge",
-                  parameters: ChallengeSchema as FunctionDeclarationSchema
-              }]
-          }]
-      });
-  } catch (error) {
-      console.error("Error calling AI model for challenge generation:", error);
-      // Consistently throw an error on API failure
-      throw new Error(`AI API call failed during challenge generation: ${error instanceof Error ? error.message : String(error)}`);
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+        // Removed tools and toolConfig temporarily
+        result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: {
+                temperature: 0.7,
+            }
+            // tools: [...], // Removed
+            // toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.ANY } } // Removed
+        });
+        lastError = null; // Success, clear last error
+        break; // Exit loop on success
+    } catch (error) { 
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.error(`Error calling AI model for challenge generation (Attempt ${attempt}/${MAX_RETRIES}):`, lastError);
+        if (attempt < MAX_RETRIES) {
+            console.log(`Retrying in ${RETRY_DELAY_MS / 1000}s...`);
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+        } else {
+            console.error("Max retries reached for challenge generation.");
+        }
+    }
+  }
+
+  // If all retries failed, lastError will be set
+  if (lastError || !result) {
+      throw new Error(`AI API call failed after ${MAX_RETRIES} attempts during challenge generation: ${lastError?.message}`);
   }
 
   const response = result.response;
-  // It's possible response or text() could be null/undefined if API call failed in subtle ways
-  if (!response) {
-      throw new Error("AI API call returned no response during challenge generation.");
-  }
-  const text = response.text();
-   if (typeof text !== 'string') {
-       throw new Error("AI API call returned non-text response during challenge generation.");
+   if (!response) {
+       throw new Error("AI API call returned no response during challenge generation.");
    }
+   const text = response.text();
+    if (typeof text !== 'string') {
+        throw new Error("AI API call returned non-text response during challenge generation.");
+    }
   console.log('Raw AI response:', text);
 
+  // Use Zod schema for parsing and validation
   let challenge: Challenge;
   try {
-    // Try to parse the response as JSON directly
-    challenge = JSON.parse(text) as Challenge;
+    // Try parsing directly
+    const parsedData = JSON.parse(text);
+    challenge = ZodChallengeSchema.parse(parsedData); // Validate using Zod
   } catch (e) {
-    console.error("Failed to parse Challenge JSON:", e);
-    console.error("Raw AI Response Text:", text); 
-    // Try to extract JSON with regex as fallback
+    console.error("Failed to parse/validate Challenge JSON directly:", e);
+    // Attempt regex fallback ONLY IF direct parse failed
     const jsonRegex = /{[[\s\S]]*}/; 
     const match = text.match(jsonRegex);
     if (match && match[0]) {
       try {
-        console.log("Attempting to parse extracted JSON as fallback...");
-        challenge = JSON.parse(match[0]) as Challenge;
+        console.log("Attempting to parse/validate extracted JSON as fallback...");
+        const parsedFallback = JSON.parse(match[0]);
+        challenge = ZodChallengeSchema.parse(parsedFallback); // Validate fallback using Zod
       } catch (nestedE) {
-        console.error("Fallback JSON parsing failed.", nestedE);
-        throw new Error("AI response for challenge generation was not valid JSON, even with fallback parsing.");
+        console.error("Fallback JSON parsing/validation failed.", nestedE);
+        // Include Zod error details if available
+        const errorDetails = nestedE instanceof Error ? nestedE.message : String(nestedE);
+        throw new Error(`AI response was not valid Challenge JSON, even with fallback parsing: ${errorDetails}`);
       }
     } else {
-      throw new Error("AI response for challenge generation did not contain valid JSON.");
+      // Include original parsing error details if available
+      const errorDetails = e instanceof Error ? e.message : String(e);
+      throw new Error(`AI response did not contain valid Challenge JSON: ${errorDetails}`);
     }
   }
-  
-  // Ensure the challenge has a valid ID
+
+  // Validation of ID/Timestamp and optional fields happens AFTER successful parsing
+  // Zod handles required fields, types, and formats defined in the schema
+  // Ensure the challenge has a valid ID (assign if missing)
   if (!challenge.id || typeof challenge.id !== 'string' || !challenge.id.match(/^CC-\d{3,}$/)) {
     const existingChallenges = await files.listChallenges();
     const existingIds = existingChallenges
@@ -250,21 +303,17 @@ export async function generateChallenge(
   }
   
   // Ensure createdAt is set
-  if (!challenge.createdAt) {
-    challenge.createdAt = new Date().toISOString();
-  }
+  challenge.createdAt = challenge.createdAt || new Date().toISOString();
   
-  // Basic validation of other fields
+  // Basic validation of other required fields 
   if (!challenge.title || typeof challenge.title !== 'string') throw new Error('Challenge title is missing or invalid');
   if (!challenge.description || typeof challenge.description !== 'string') throw new Error('Challenge description is missing or invalid');
-  if (!Array.isArray(challenge.requirements)) challenge.requirements = []; // Default to empty array if missing
+  // Initialize optional arrays if missing AFTER parsing
+  if (!Array.isArray(challenge.requirements)) challenge.requirements = [];
   if (!Array.isArray(challenge.examples)) challenge.examples = [];
-  if (typeof challenge.difficulty !== 'number' || challenge.difficulty < 1 || challenge.difficulty > 10) challenge.difficulty = config.difficulty; // Default to config difficulty
+  if (!Array.isArray(challenge.hints)) challenge.hints = [];
   if (!Array.isArray(challenge.topics)) challenge.topics = [];
-  // Ensure hints is an array if present
-  if (challenge.hints && !Array.isArray(challenge.hints)) challenge.hints = []; 
-  // Add createdAt back if schema didn't enforce it (it should)
-  if (!challenge.createdAt) challenge.createdAt = new Date().toISOString();
+  if (typeof challenge.difficulty !== 'number' || challenge.difficulty < 1 || challenge.difficulty > 10) challenge.difficulty = config.difficulty; // Default to config difficulty
 
   return challenge;
 }
@@ -273,73 +322,89 @@ export async function generateChallenge(
 export async function generateFeedback(
   challenge: Challenge,
   submission: Submission,
-  aiMemory: string, // Changed parameter
-  mentorProfileName: string // Changed from profile object to name
+  aiMemory: string, 
+  mentorProfileName: string 
 ): Promise<Feedback> {
-  const mentorProfile = await profile.loadMentorProfile(mentorProfileName); // Load mentor profile
+  const mentorProfile = await profile.loadMentorProfile(mentorProfileName);
   const prompt = await generateFeedbackPrompt(challenge, submission, aiMemory, mentorProfile); // Pass aiMemory
   
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 1000;
   let result;
-  try {
-      result = await model.generateContent(prompt);
-  } catch (error) {
-      console.error("Error calling AI model for feedback generation:", error);
-       // Consistently throw an error on API failure
-      throw new Error(`AI API call failed during feedback generation: ${error instanceof Error ? error.message : String(error)}`);
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+          result = await model.generateContent(prompt);
+          lastError = null;
+          break; // Exit loop on success
+      } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          console.error(`Error calling AI model for feedback generation (Attempt ${attempt}/${MAX_RETRIES}):`, lastError);
+          if (attempt < MAX_RETRIES) {
+              console.log(`Retrying in ${RETRY_DELAY_MS / 1000}s...`);
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+          } else {
+              console.error("Max retries reached for feedback generation.");
+          }
+      }
   }
   
+  // If all retries failed, lastError will be set
+   if (lastError || !result) {
+       throw new Error(`AI API call failed after ${MAX_RETRIES} attempts during feedback generation: ${lastError?.message}`);
+   }
+  
   const response = result.response;
-   // It's possible response or text() could be null/undefined if API call failed in subtle ways
    if (!response) {
        throw new Error("AI API call returned no response during feedback generation.");
    }
-   const textResponse = response.text(); // Renamed to avoid conflict with 'text' variable below
+   const textResponse = response.text(); 
     if (typeof textResponse !== 'string') {
         throw new Error("AI API call returned non-text response during feedback generation.");
     }
     
-  let text = textResponse; // Assign to 'text' for existing parsing logic
+  let text = textResponse; 
   
-  // ... existing JSON extraction ...
-  const jsonRegex = /```json\n([\s\S]*?)\n```/;
-  const match = text.match(jsonRegex);
-  if (match && match[1]) {
-    text = match[1];
-  }
-  
+  // Use Zod schema for parsing and validation
   let feedback: Feedback;
-   try {
-    feedback = JSON.parse(text) as Feedback;
+  try {
+      // Try parsing directly from potential markdown block
+      const jsonRegex = /```json\n([\s\S]*?)\n```/;
+      const match = text.match(jsonRegex);
+      const jsonToParse = match && match[1] ? match[1] : text; // Use extracted or original text
+      const parsedData = JSON.parse(jsonToParse);
+      feedback = ZodFeedbackSchema.parse(parsedData); // Validate using Zod
   } catch (e) {
-      console.error("Failed to parse Feedback JSON:", e);
-      console.error("Raw AI Response Text:", text);
-       // Attempt to find JSON within potentially messy output
-      const nestedJsonMatch = text.match(/{[\s\S]*}/);
-      if (nestedJsonMatch && nestedJsonMatch[0]) {
-          try {
-              console.log("Attempting to parse nested JSON...");
-              feedback = JSON.parse(nestedJsonMatch[0]) as Feedback;
-          } catch (nestedE) {
-              console.error("Failed to parse even nested JSON.", nestedE);
-              throw new Error("AI response for feedback generation was not valid JSON.");
-          }
-      } else {
-          throw new Error("AI response for feedback generation did not contain valid JSON.");
-      }
+      console.error("Failed to parse/validate Feedback JSON:", e);
+      console.error("Raw AI Response Text (before potential extraction):", text);
+       // Attempt to find JSON within potentially messy output ONLY if primary parse failed
+       if (!(e instanceof SyntaxError)) { // Don't retry if it wasn't a basic JSON syntax error initially
+           const nestedJsonMatch = text.match(/{[\s\S]*}/);
+           if (nestedJsonMatch && nestedJsonMatch[0]) {
+               try {
+                   console.log("Attempting to parse/validate nested JSON as fallback...");
+                   const parsedFallback = JSON.parse(nestedJsonMatch[0]);
+                   feedback = ZodFeedbackSchema.parse(parsedFallback); // Validate fallback using Zod
+               } catch (nestedE) {
+                   console.error("Fallback JSON parsing/validation failed.", nestedE);
+                   const errorDetails = nestedE instanceof Error ? nestedE.message : String(nestedE);
+                   throw new Error(`AI response for feedback generation was not valid Feedback JSON, even with fallback parsing: ${errorDetails}`);
+               }
+           } else {
+                const errorDetails = e instanceof Error ? e.message : String(e);
+               throw new Error(`AI response for feedback generation did not contain valid Feedback JSON: ${errorDetails}`);
+           }
+       } else {
+            const errorDetails = e instanceof Error ? e.message : String(e);
+           throw new Error(`AI response for feedback generation was not valid Feedback JSON: ${errorDetails}`);
+       }
   }
 
-  // Ensure required fields are present
-  if (!feedback.score || typeof feedback.score !== 'number' || feedback.score < 0 || feedback.score > 100) {
-      console.warn('Feedback score missing or invalid, setting to 0.');
-      feedback.score = 0;
-  }
-  if (!Array.isArray(feedback.strengths)) feedback.strengths = [];
-  if (!Array.isArray(feedback.weaknesses)) feedback.weaknesses = [];
-  if (!Array.isArray(feedback.suggestions)) feedback.suggestions = [];
-  if (!feedback.improvementPath || typeof feedback.improvementPath !== 'string') feedback.improvementPath = "Review suggestions and try applying them."; // Default value
-  
+  // Ensure submissionId and createdAt are set AFTER successful parsing
+  // Other fields are handled by Zod schema (required, types, defaults)
   feedback.submissionId = submission.challengeId; // Ensure submissionId matches challengeId
-  feedback.createdAt = new Date().toISOString();
+  feedback.createdAt = feedback.createdAt || new Date().toISOString(); // Use parsed or generate new
 
   return feedback;
 }
@@ -354,56 +419,43 @@ export async function generateLetterResponsePrompt(
   config: Config, // Now used in the prompt
   studentStatus: string // Added parameter
 ): Promise<string> {
-  // Prepare config details for the prompt
-  const configDetails = `
-Student Preferences & Configuration:
-Configured Topics & Levels: ${JSON.stringify(config.topics)}
-Preferred Difficulty: ${config.difficulty}/10
-Preferred Challenge Types: ${config.preferredChallengeTypes?.join(', ') || 'Not specified'}
-User Email: ${config.userEmail}
-GitHub Username: ${config.githubUsername}
-`;
+  const configDetails = `Configured Topics & Levels: ${JSON.stringify(config.topics)}\nPreferred Difficulty: ${config.difficulty}/10\nPreferred Challenge Types: ${config.preferredChallengeTypes?.join(', ') || 'Not specified'}\nUser Email: ${config.userEmail}\nGitHub Username: ${config.githubUsername}`;
 
-  const basePrompt = `You are the ${mentorProfile.name} mentor (${mentorProfile.style}, ${mentorProfile.tone}). Respond to the student's letter below, using the AI Teacher's Notes and the student's configuration for context.
+  const contextSections: PromptSection[] = [
+      { title: 'AI Teacher Notes', content: aiMemory, markdownFormat: 'notes' },
+      { title: 'Student Preferences & Configuration', content: configDetails },
+      { title: 'Recent Correspondence', content: correspondence.join('\n---\n') || 'None' },
+      { title: 'Student\'s Latest Letter', content: question }
+  ];
 
---- START AI TEACHER'S NOTES ---
-${aiMemory}
---- END AI TEACHER'S NOTES ---
-
-${configDetails}
-Recent Correspondence (if any):
-${correspondence.join('\n---\n')}
-
-Student's Latest Letter:
-"${question}"
-`;
-
-  let instructions = '';
+  let instructions: string[] = [];
   if (studentStatus === 'awaiting_introduction') {
-    // Specific instructions for the *first* interaction / introduction letter
-    instructions = `
-Instructions:
-1.  Acknowledge this is the student's introduction/first letter.
-2.  Adopt your ${mentorProfile.name} persona (${mentorProfile.style}, ${mentorProfile.tone}) to provide a welcoming but character-appropriate response.
-3.  Briefly acknowledge the student's stated goals or background from their letter.
-4.  **Critically Important:** DO NOT assign technical tasks, request code examples, or give foundational exercises in this initial response. Mention that formal challenges will follow separately based on their configuration.
-5.  Keep the response concise and encouraging in your persona's style.
-6.  Generate insights based *only* on the content of THIS letter (sentiment, mentioned topics, flags like 'introduction').
-`;
+    instructions = [
+      `Acknowledge this is the student's introduction/first letter.`,
+      `Adopt your ${mentorProfile.name} persona (${mentorProfile.style}, ${mentorProfile.tone}) to provide a welcoming but character-appropriate response.`,
+      `Briefly acknowledge the student's stated goals or background from their letter.`,
+      `**Critically Important:** DO NOT assign technical tasks, request code examples, or give foundational exercises in this initial response. Mention that formal challenges will follow separately based on their configuration.`,
+      `Keep the response concise and encouraging in your persona's style.`,
+      `Generate insights based *only* on the content of THIS letter (sentiment, mentioned topics, flags like 'introduction').`
+    ];
   } else {
-    // Standard instructions for subsequent letters
-    instructions = `
-Instructions:
-1.  Respond to the student's questions or comments in your ${mentorProfile.name} persona (${mentorProfile.style}, ${mentorProfile.tone}).
-2.  Use the AI Teacher's Notes and recent correspondence for context.
-3.  Provide clear answers or guidance.
-4.  Generate relevant insights based on the conversation (sentiment, topics, strengths, weaknesses, flags).
-`;
+    instructions = [
+      `Respond to the student's questions or comments in your ${mentorProfile.name} persona (${mentorProfile.style}, ${mentorProfile.tone}).`,
+      `Use the AI Teacher's Notes, student configuration, and recent correspondence for context.`,
+      `Provide clear answers or guidance.`,
+      `Generate relevant insights based on the conversation (sentiment, topics, strengths, weaknesses, flags).`
+    ];
   }
 
-  return `${basePrompt}
-${instructions}
-Format the response as a JSON LetterResponse object with fields: content (string, your response to the student), insights (LetterInsights object with optional fields: sentiment, strengths, weaknesses, topics, skillLevelAdjustment, flags).`;
+  const outputFormatDescription = `Format the response as a single JSON object matching the LetterResponse schema: { content: string (your response to the student), insights: { sentiment?: string, strengths?: string[], weaknesses?: string[], topics?: string[], skillLevelAdjustment?: number, flags?: string[] } }. Respond ONLY with this JSON object.`;
+
+  return buildPrompt(
+      mentorProfile,
+      `Respond to the student's letter.`, // Task Description
+      contextSections,
+      instructions,
+      outputFormatDescription
+  );
 }
 
 // Refactored: Adds studentStatus parameter
@@ -425,13 +477,32 @@ export async function generateLetterResponse(
     studentStatus // Pass status down
   );
   
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 1000;
   let result;
-  try {
-      result = await model.generateContent(prompt);
-  } catch (error) {
-      console.error("Error calling AI model for letter response generation:", error);
-      throw new Error(`AI API call failed during letter response generation: ${error instanceof Error ? error.message : String(error)}`);
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+          result = await model.generateContent(prompt);
+          lastError = null;
+          break; // Exit loop on success
+      } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          console.error(`Error calling AI model for letter response generation (Attempt ${attempt}/${MAX_RETRIES}):`, lastError);
+          if (attempt < MAX_RETRIES) {
+              console.log(`Retrying in ${RETRY_DELAY_MS / 1000}s...`);
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+          } else {
+              console.error("Max retries reached for letter response generation.");
+          }
+      }
   }
+  
+  // If all retries failed, lastError will be set
+   if (lastError || !result) {
+       throw new Error(`AI API call failed after ${MAX_RETRIES} attempts during letter response generation: ${lastError?.message}`);
+   }
   
   const response = result.response;
    if (!response) {
@@ -498,17 +569,36 @@ ${aiMemory}
 
 Generate only the narrative summary text (markdown format allowed).`;
 
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 1000;
   let result;
-  try {
-    console.log(`Generating ${digestType} digest summary from AI memory...`);
-    result = await model.generateContent(prompt);
-  } catch (error) {
-      console.error(`Error calling AI model for ${digestType} digest summary:`, error);
-      throw new Error(`AI API call failed during ${digestType} digest summary generation: ${error instanceof Error ? error.message : String(error)}`);
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        console.log(`Generating ${digestType} digest summary from AI memory (Attempt ${attempt}/${MAX_RETRIES})...`);
+        result = await model.generateContent(prompt);
+        lastError = null;
+        break; // Exit loop on success
+      } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          console.error(`Error calling AI model for ${digestType} digest summary (Attempt ${attempt}/${MAX_RETRIES}):`, lastError);
+          if (attempt < MAX_RETRIES) {
+              console.log(`Retrying in ${RETRY_DELAY_MS / 1000}s...`);
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+          } else {
+              console.error(`Max retries reached for ${digestType} digest summary generation.`);
+          }
+      }
   }
   
+  // If all retries failed, lastError will be set
+   if (lastError || !result) {
+       throw new Error(`AI API call failed after ${MAX_RETRIES} attempts during ${digestType} digest summary generation: ${lastError?.message}`);
+   }
+  
   const response = result.response;
-  if (!response) {
+   if (!response) {
        throw new Error(`AI API call returned no response during ${digestType} digest summary generation.`);
    }
    const summaryText = response.text();

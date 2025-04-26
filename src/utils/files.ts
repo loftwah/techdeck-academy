@@ -1,6 +1,8 @@
 import { promises as fs } from 'fs'
 import path from 'path'
 import type { Challenge, Submission, Feedback, StudentProfile } from '../types.js'
+import { ChallengeSchema, SubmissionSchema, FeedbackSchema } from '../schemas.js'
+import { ZodError } from 'zod'
 
 // Base paths for different file types
 const PATHS = {
@@ -57,10 +59,28 @@ export async function writeChallenge(challenge: Challenge): Promise<void> {
   await fs.writeFile(filepath, JSON.stringify(challenge, null, 2))
 }
 
-export async function readChallenge(challengeId: string): Promise<Challenge> {
+export async function readChallenge(challengeId: string): Promise<Challenge | null> {
   const filepath = path.join(PATHS.challenges, `${challengeId}.json`)
-  const content = await fs.readFile(filepath, 'utf-8')
-  return JSON.parse(content) as Challenge
+  try {
+    const content = await fs.readFile(filepath, 'utf-8')
+    const jsonData = JSON.parse(content);
+    const result = ChallengeSchema.safeParse(jsonData);
+    if (result.success) {
+        return result.data;
+    } else {
+        console.error(`Invalid challenge file content for ${challengeId}:`, result.error.errors);
+        return null; 
+    }
+  } catch (error) {
+      if (error instanceof SyntaxError) {
+          console.error(`Invalid JSON syntax in challenge file ${challengeId}:`, error);
+      } else if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+          console.warn(`Challenge file not found: ${filepath}`);
+      } else {
+        console.error(`Error reading challenge file ${filepath}:`, error);
+      }
+      return null;
+  }
 }
 
 export async function listChallenges(): Promise<string[]> {
@@ -75,10 +95,28 @@ export async function writeSubmission(submission: Submission): Promise<void> {
   await fs.writeFile(filepath, JSON.stringify(submission, null, 2))
 }
 
-export async function readSubmission(submissionId: string): Promise<Submission> {
+export async function readSubmission(submissionId: string): Promise<Submission | null> {
   const filepath = path.join(PATHS.submissions, `${submissionId}.json`)
-  const content = await fs.readFile(filepath, 'utf-8')
-  return JSON.parse(content) as Submission
+  try {
+    const content = await fs.readFile(filepath, 'utf-8');
+    const jsonData = JSON.parse(content);
+    const result = SubmissionSchema.safeParse(jsonData);
+     if (result.success) {
+        return result.data;
+    } else {
+        console.error(`Invalid submission file content for ${submissionId}:`, result.error.errors);
+        return null; 
+    }
+  } catch (error) {
+      if (error instanceof SyntaxError) {
+          console.error(`Invalid JSON syntax in submission file ${submissionId}:`, error);
+      } else if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+          console.warn(`Submission file not found: ${filepath}`);
+      } else {
+          console.error(`Error reading submission file ${filepath}:`, error);
+      }
+      return null; 
+  }
 }
 
 export async function listSubmissions(challengeId?: string): Promise<string[]> {
@@ -97,10 +135,28 @@ export async function writeFeedback(feedback: Feedback): Promise<void> {
   await fs.writeFile(filepath, JSON.stringify(feedback, null, 2));
 }
 
-export async function readFeedback(submissionId: string): Promise<Feedback> {
+export async function readFeedback(submissionId: string): Promise<Feedback | null> {
   const filepath = path.join(PATHS.feedback, `${submissionId}.json`);
-  const content = await fs.readFile(filepath, 'utf-8');
-  return JSON.parse(content) as Feedback;
+  try {
+    const content = await fs.readFile(filepath, 'utf-8');
+    const jsonData = JSON.parse(content);
+    const result = FeedbackSchema.safeParse(jsonData);
+     if (result.success) {
+        return result.data;
+    } else {
+        console.error(`Invalid feedback file content for submission ${submissionId}:`, result.error.errors);
+        return null; 
+    }
+  } catch (error) {
+       if (error instanceof SyntaxError) {
+          console.error(`Invalid JSON syntax in feedback file for ${submissionId}:`, error);
+      } else if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+          console.warn(`Feedback file not found: ${filepath}`);
+      } else {
+          console.error(`Error reading feedback file ${filepath}:`, error);
+      }
+      return null; 
+  }
 }
 
 // Archive operations
@@ -160,16 +216,32 @@ export async function fileExists(filepath: string): Promise<boolean> {
 
 // Generic archive function
 export async function archiveFile(sourcePath: string, targetArchiveBaseDir: string): Promise<void> {
-  const filename = path.basename(sourcePath);
+  let filename = path.basename(sourcePath);
   const monthDir = getMonthDir(); // Use existing helper for YYYY-MM subdirectory
   const archiveDirPath = path.join(targetArchiveBaseDir, monthDir);
-  const targetPath = path.join(archiveDirPath, filename);
+  let targetPath = path.join(archiveDirPath, filename);
 
   await ensureDirectories(); // Ensure base directories exist first
   await fs.mkdir(archiveDirPath, { recursive: true }); // Ensure the specific month archive dir exists
+
+  // Check if target file already exists
+  if (await fileExists(targetPath)) {
+    const timestamp = Date.now();
+    const ext = path.extname(filename);
+    const base = path.basename(filename, ext);
+    const newFilename = `${base}-${timestamp}${ext}`;
+    targetPath = path.join(archiveDirPath, newFilename);
+    console.warn(`Target archive path ${path.join(archiveDirPath, filename)} already exists. Renaming to ${targetPath}`);
+  }
   
   console.log(`Archiving ${sourcePath} to ${targetPath}`); // Add logging
-  await fs.rename(sourcePath, targetPath); // Move the file
+  try {
+      await fs.rename(sourcePath, targetPath); // Move the file
+  } catch (error) {
+      console.error(`Error during fs.rename from ${sourcePath} to ${targetPath}:`, error);
+      // Re-throw the error to indicate archiving failed
+      throw new Error(`Failed to archive file ${filename}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 // Specific archive function for introduction.md

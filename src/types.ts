@@ -46,12 +46,14 @@ export interface Feedback {
 // Represents the student's learning state and progress
 export interface StudentProfile {
   userId: string // Could be GitHub username or a unique ID
+  name: string // Added name field
   currentSkillLevel: number // Overall level (1-10) - maybe derived?
   completedChallenges: number
   averageScore: number // Average score from feedback
   lastUpdated: string // ISO date string
   status: 'awaiting_introduction' | 'active' | 'paused' | 'completed' // Learning status
-  topicLevels?: Record<string, number> // Optional: Track level per topic
+  topicLevels?: Record<string, { currentLevel: number }> 
+  currentChallengeId?: string; // Added missing optional field based on schema usage
 }
 
 // Configuration Types

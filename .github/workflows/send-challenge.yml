@@ -22,6 +22,10 @@ env:
 jobs:
   generate-challenge:
     runs-on: ubuntu-latest
+    # Add concurrency block to prevent simultaneous runs
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false # Don't cancel scheduled runs if manual one is triggered?
     
     steps:
       - name: Checkout repository

@@ -1,5 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { environment } from '../config.js';
 
 // Define character limits for each section (adjust as needed)
 const MAX_CHARS_SNAPSHOT = 500;
@@ -22,6 +24,15 @@ This application uses the following challenge types:
 ---
 `;
 const MEMORY_FILE_PATH = path.join(process.cwd(), 'ai-memory.md');
+
+// Initialize Gemini AI (only for summarization in this file)
+// Consider refactoring to have a single AI client instance shared across utils
+const apiKey = environment.GEMINI_API_KEY
+if (!apiKey) {
+  throw new Error('GEMINI_API_KEY environment variable is not set for memory manager')
+}
+const genAI = new GoogleGenerativeAI(apiKey)
+const summaryModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
 /**
  * Represents the structured content of the AI memory file.
@@ -124,26 +135,71 @@ ${memory.recentActivity}
 ${memory.history}`;
 }
 
-
 /**
- * PLACEHOLDER: Simulates calling an LLM to summarize text.
- * In a real implementation, this would interact with the AI service.
- * This is the core function addressing the CHARACTER LIMITATIONS concern.
+ * Calls the LLM to summarize text, aiming for a target character count.
+ * Includes retry logic.
  * @param textToSummarize The text needing summarization.
  * @param targetMaxChars The desired maximum character count for the summary.
- * @returns A summarized string (currently just truncates).
+ * @returns A summarized string, or the original text if summarization fails.
  */
 async function summarizeWithAI(textToSummarize: string, targetMaxChars: number): Promise<string> {
-    console.warn('AI Summarization called (Placeholder - currently truncating)');
-    // !!!! IMPORTANT: Replace this with actual LLM call !!!!
-    // Example prompt: "Summarize the following teacher's notes about a student's progress,
-    // focusing on key patterns and milestones. Keep the summary concise and under
-    // ${targetMaxChars * 0.8} characters: \\n\\n${textToSummarize}"
-    const summary = textToSummarize.length > targetMaxChars
-        ? `[Summarized Content] ... ${textToSummarize.slice(-targetMaxChars * 0.7)}` // Basic truncation
-        : textToSummarize;
-    return summary.trim();
+    // Avoid summarizing very short text
+    if (textToSummarize.length < targetMaxChars * 1.2) { // Only summarize if significantly over limit
+        console.log(`Skipping summarization: Text length (${textToSummarize.length}) is close to target (${targetMaxChars}).`);
+        return textToSummarize;
+    }
 
+    console.log(`Attempting AI Summarization for text (length: ${textToSummarize.length}) targeting ~${targetMaxChars} chars.`);
+    
+    // Aim slightly under the target to allow for model variance
+    const promptTargetChars = Math.floor(targetMaxChars * 0.9);
+    const prompt = `Summarize the following AI teacher's notes about a student's learning progress. Focus on capturing key patterns, significant achievements, persistent challenges, and potential focus areas. Keep the summary concise and ideally under ${promptTargetChars} characters.\n\nNotes:\n--- START NOTES ---\n${textToSummarize}\n--- END NOTES ---\n\nProvide only the summarized text.`;
+
+    const MAX_RETRIES = 2; // Fewer retries for summarization maybe?
+    const RETRY_DELAY_MS = 1500;
+    let result;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            result = await summaryModel.generateContent(prompt);
+            lastError = null;
+            break; // Exit loop on success
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            console.error(`Error calling AI model for summarization (Attempt ${attempt}/${MAX_RETRIES}):`, lastError);
+            if (attempt < MAX_RETRIES) {
+                console.log(`Retrying summarization in ${RETRY_DELAY_MS / 1000}s...`);
+                await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+            } else {
+                console.error("Max retries reached for summarization.");
+            }
+        }
+    }
+
+    if (lastError || !result) {
+        console.error(`AI Summarization failed after ${MAX_RETRIES} attempts. Falling back to TRUNCATION.`);
+        // Fallback to simple truncation (keep end) if AI fails
+        return `[SUMMARIZATION FAILED - TRUNCATED] ... ${textToSummarize.slice(-targetMaxChars * 0.8)}`;
+    }
+
+    try {
+        const response = result.response;
+        const summaryText = response?.text();
+        if (typeof summaryText === 'string' && summaryText.trim().length > 0) {
+            console.log(`AI Summarization successful. Original length: ${textToSummarize.length}, Summary length: ${summaryText.length}`);
+            // Optional: Add check if summaryText actually reduced length significantly
+            // Optional: Add check if summary is still over targetMaxChars and truncate *that* if needed
+            return summaryText.trim();
+        } else {
+             throw new Error('AI returned empty or invalid summary text.');
+        }
+    } catch (error) {
+        console.error("Error processing AI summary response:", error);
+        console.error("AI Summarization failed. Falling back to TRUNCATION.");
+        // Fallback to simple truncation (keep end) if response parsing fails
+        return `[SUMMARIZATION FAILED - TRUNCATED] ... ${textToSummarize.slice(-targetMaxChars * 0.8)}`;
+    }
 }
 
 /**

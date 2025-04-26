@@ -1,7 +1,10 @@
 import { promises as fs } from 'fs'
+import path from 'path'
 import type { StudentProfile, Challenge, Feedback, MentorProfile, LetterInsights, Config } from '../types.js'
 import { linusProfile } from '../profiles/linus.js'
 import { updateAIMemory } from './ai-memory-manager.js'
+import { StudentProfileSchema } from '../schemas.js'
+import { ZodError } from 'zod'
 
 const PROFILE_FILE = 'student-profile.json'
 
@@ -16,46 +19,59 @@ const DEFAULT_PROFILE: StudentProfile = {
   topicLevels: {}
 }
 
-export async function readStudentProfile(config: Config): Promise<StudentProfile> {
+// Read student profile
+// Updated return type and added validation
+export async function readStudentProfile(config: Config): Promise<StudentProfile | null> {
   try {
     const content = await fs.readFile(PROFILE_FILE, 'utf-8')
-    let profile = JSON.parse(content) as StudentProfile
-    // Ensure status exists for older profiles
-    if (!profile.status) {
-      profile.status = 'awaiting_introduction' 
+    const jsonData = JSON.parse(content);
+    // Validate using Zod
+    const result = StudentProfileSchema.safeParse(jsonData);
+     if (result.success) {
+        // Optional: Could merge with default config here if needed
+        return result.data;
+    } else {
+        console.error(`Invalid student profile file content:`, result.error.errors);
+        return null; // Indicate failure to load/validate
     }
-    // Optionally merge/update topicLevels if config changed?
-    // For now, just return the existing profile
-    return profile
   } catch (error) {
-    // Create default profile WITH topic levels from config
-    console.log('Student profile not found, creating default profile with configured topics.')
-    const defaultProfile: StudentProfile = {
-      userId: config.githubUsername || 'default-user', // Use username from config
-      currentSkillLevel: 1, // Initial overall level
-      completedChallenges: 0,
-      averageScore: 0,
-      lastUpdated: new Date().toISOString(),
-      status: 'awaiting_introduction', // Default status
-      topicLevels: Object.fromEntries(
-        Object.entries(config.topics).map(([topic, { currentLevel }]) => [topic, currentLevel])
-      ) // Populate from config
-    }
-    // Ensure the default profile is written back if created
-    await writeStudentProfile(defaultProfile);
-    return defaultProfile
+      if (error instanceof SyntaxError) {
+          console.error(`Invalid JSON syntax in profile file ${PROFILE_FILE}:`, error);
+      } else if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+          console.warn(`Profile file not found: ${PROFILE_FILE}. Consider creating a default.`);
+          // TODO: Optionally create and return a default profile?
+      } else {
+        console.error(`Error reading profile file ${PROFILE_FILE}:`, error);
+      }
+      return null; // Return null on any read/parse/validation error
   }
 }
 
-export async function writeStudentProfile(profile: StudentProfile): Promise<void> {
-  await fs.writeFile(PROFILE_FILE, JSON.stringify(profile, null, 2))
+// Write student profile
+// Added validation before writing
+export async function writeStudentProfile(profileData: StudentProfile): Promise<void> {
+  try {
+      // Validate the profile data against the schema before writing
+      StudentProfileSchema.parse(profileData); 
+      await fs.writeFile(PROFILE_FILE, JSON.stringify(profileData, null, 2));
+      console.log('Student profile updated successfully.');
+  } catch (error) {
+      if (error instanceof ZodError) {
+          console.error('Invalid profile data provided for writing:', error.errors);
+          // Decide if we should throw or just log
+          throw new Error('Attempted to write invalid profile data.'); 
+      } else {
+          console.error('Error writing student profile:', error);
+           throw error; // Re-throw other file system errors
+      }
+  }
 }
 
 // New function to update the profile status to active
 export async function setProfileStatusActive(config: Config): Promise<void> {
   try {
     const profile = await readStudentProfile(config);
-    if (profile.status !== 'active') {
+    if (profile && profile.status !== 'active') {
       profile.status = 'active';
       profile.lastUpdated = new Date().toISOString();
       await writeStudentProfile(profile);
@@ -79,31 +95,35 @@ export async function updateProfileWithFeedback(
   const now = new Date().toISOString()
 
   // --- Update Core Metrics in JSON Profile ---
-  profile.completedChallenges++
+  if (profile) {
+    profile.completedChallenges++
 
-  const currentAverage = profile.averageScore ?? 0
-  const currentTotalScore = currentAverage * (profile.completedChallenges - 1)
-  const newTotalScore = currentTotalScore + feedback.score
-  profile.averageScore = parseFloat((newTotalScore / profile.completedChallenges).toFixed(2))
+    const currentAverage = profile.averageScore ?? 0
+    const currentTotalScore = currentAverage * (profile.completedChallenges - 1)
+    const newTotalScore = currentTotalScore + feedback.score
+    profile.averageScore = parseFloat((newTotalScore / profile.completedChallenges).toFixed(2))
 
-  profile.lastUpdated = now
-  await writeStudentProfile(profile) // Write minimal profile
+    profile.lastUpdated = now
+    await writeStudentProfile(profile) // Write minimal profile
 
-  // --- Log Detailed Context to AI Memory ---
-  const memoryEntry = `
+    // --- Log Detailed Context to AI Memory ---
+    const memoryEntry = `
 *   **Challenge Completed:** ${challenge.title} (ID: ${challenge.id})
 *   **Score:** ${feedback.score}/100
 *   **AI Feedback Suggestions:** ${feedback.suggestions.join(', ') || 'None provided'}
 *   **Identified Strengths:** ${feedback.strengths.join(', ') || 'None noted'}
 *   **Identified Weaknesses:** ${feedback.weaknesses.join(', ') || 'None noted'}
 *   **Timestamp:** ${now}
-  `
+    `
 
-  try {
-    await updateAIMemory('recentActivity', memoryEntry.trim())
-    console.log(`Logged feedback context for challenge ${challenge.id} to AI memory.`)
-  } catch (error) {
-    console.error(`Failed to log feedback context for challenge ${challenge.id} to AI memory:`, error)
+    try {
+      await updateAIMemory('recentActivity', memoryEntry.trim())
+      console.log(`Logged feedback context for challenge ${challenge.id} to AI memory.`)
+    } catch (error) {
+      console.error(`Failed to log feedback context for challenge ${challenge.id} to AI memory:`, error)
+    }
+  } else {
+    console.error('Profile not found, unable to update feedback.')
   }
 }
 
@@ -124,8 +144,12 @@ export async function logAIMemoryEvent(
   // Also update the timestamp in the minimal profile
   try {
     const profile = await readStudentProfile(config)
-    profile.lastUpdated = now
-    await writeStudentProfile(profile)
+    if (profile) {
+      profile.lastUpdated = now
+      await writeStudentProfile(profile)
+    } else {
+      console.error('Profile not found, unable to update timestamp.')
+    }
   } catch (error) {
     console.error('Failed to update profile timestamp after logging AI memory event:', error)
   }
@@ -169,11 +193,15 @@ export async function updateProfileFromLetterInsights(
   // --- Update Minimal JSON Profile Timestamp ---
   try {
     const profile = await readStudentProfile(config)
-    profile.lastUpdated = now
-    // Optionally update core metrics like skill level IF the insight implies a direct, simple update AND we keep that field
-    // Example: if (insights.skillLevelAdjustment) profile.currentSkillLevel = Math.max(1, Math.min(10, profile.currentSkillLevel + insights.skillLevelAdjustment))
-    await writeStudentProfile(profile)
-    console.log('Minimal student profile timestamp updated.')
+    if (profile) {
+      profile.lastUpdated = now
+      // Optionally update core metrics like skill level IF the insight implies a direct, simple update AND we keep that field
+      // Example: if (insights.skillLevelAdjustment) profile.currentSkillLevel = Math.max(1, Math.min(10, profile.currentSkillLevel + insights.skillLevelAdjustment))
+      await writeStudentProfile(profile)
+      console.log('Minimal student profile timestamp updated.')
+    } else {
+      console.error('Profile not found, unable to update timestamp.')
+    }
   } catch (error) {
     console.error('Failed to update profile timestamp after processing letter insights:', error)
   }
