@@ -297,10 +297,4 @@ export async function sendEmail(
   }
   // If loop finishes, all retries failed
   throw new Error(`Failed to send email after ${maxRetries} attempts: ${lastError?.message || 'Unknown Resend error'}`);
-}
-
-// Export types only
-export type {
-  DigestData,
-  DigestStats
 } 
