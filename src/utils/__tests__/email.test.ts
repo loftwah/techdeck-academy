@@ -93,11 +93,11 @@ describe('Email Utilities', () => {
   })
 
   describe('sendEmail Retry Logic', () => {
-    it('should eventually send an email successfully', async () => {
+    it('should eventually send an email successfully after retries', async () => {
       const testConfig: Partial<Config> = { userEmail: 'test@example.com' };
       const content = {
-        subject: 'Live Test - sendEmail internal retry',
-        html: '<p>This email was sent by a live test (testing internal retry).</p>'
+        subject: 'Test - sendEmail internal retry',
+        html: '<p>This email was sent by a test (testing internal retry).</p>'
       };
       await expect(emailUtils.sendEmail(testConfig as Config, content))
         .resolves.toBeUndefined();
@@ -123,11 +123,11 @@ describe('Email Utilities', () => {
       })).rejects.toThrow('Email subject is too long')
     })
 
-    it('should send an email successfully via Resend', async () => {
+    it('should send an email via Resend', async () => {
       const testConfig: Partial<Config> = { userEmail: 'test@example.com' };
       const content = {
-        subject: 'Live Test - sendEmail',
-        html: '<p>This email was sent by a live test.</p>'
+        subject: 'Test - sendEmail',
+        html: '<p>This email was sent by a test.</p>'
       }
       await expect(emailUtils.sendEmail(testConfig as Config, content))
         .resolves.toBeUndefined();
