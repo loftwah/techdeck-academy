@@ -1,3 +1,5 @@
+import { marked } from 'marked'
+import type { Renderer, Token } from 'marked'
 import { Resend } from 'resend'
 import { environment } from '../config.js'
 import type { 
@@ -9,47 +11,152 @@ import type {
 
 const resend = new Resend(environment.RESEND_API_KEY)
 
-interface EmailContent {
-  subject: string
-  content: string
+// Configure marked options for secure and styled HTML output
+marked.setOptions({
+  breaks: true, // Convert line breaks to <br>
+  gfm: true, // Enable GitHub Flavored Markdown
+})
+
+// Custom renderer to add email-safe styling
+const renderer = new marked.Renderer()
+
+// Style headers appropriately for email
+const sizes: Record<number, string> = {
+  1: '24px',
+  2: '20px',
+  3: '18px',
+  4: '16px',
+  5: '14px',
+  6: '12px'
+}
+
+// Helper function to escape HTML
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  }
+  return text.replace(/[&<>"']/g, m => map[m])
+}
+
+// Helper function to safely get text from tokens
+function getTextFromTokens(tokens: Token[]): string {
+  return tokens
+    .map(token => {
+      if ('text' in token) {
+        return token.text
+      }
+      return ''
+    })
+    .join('')
+}
+
+// Override renderer methods with type-safe implementations
+const customRenderer: Partial<Renderer> = {
+  heading({ tokens, depth }) {
+    const text = getTextFromTokens(tokens)
+    return `<h${depth} style="font-size: ${sizes[depth]}; margin-top: 20px; margin-bottom: 10px; font-weight: 600; color: #2D3748;">${text}</h${depth}>`
+  },
+
+  code({ text, escaped }) {
+    const code = escaped ? text : escapeHtml(text)
+    return `<pre style="background-color: #F7FAFC; padding: 16px; border-radius: 8px; overflow-x: auto;"><code>${code}</code></pre>`
+  },
+
+  codespan({ text }) {
+    return `<code style="background-color: #F7FAFC; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${text}</code>`
+  },
+
+  blockquote({ tokens }) {
+    const text = getTextFromTokens(tokens)
+    return `<blockquote style="border-left: 4px solid #CBD5E0; margin: 0; padding-left: 16px; color: #4A5568;">${text}</blockquote>`
+  },
+
+  link({ href, title, tokens }) {
+    const text = getTextFromTokens(tokens)
+    return `<a href="${href}" style="color: #4299E1; text-decoration: none;" ${title ? `title="${title}"` : ''}>${text}</a>`
+  },
+
+  list(token) {
+    const items = token.items.map(item => `<li>${getTextFromTokens(item.tokens)}</li>`).join('')
+    return `<${token.ordered ? 'ol' : 'ul'} style="padding-left: 24px; margin: 16px 0;">${items}</${token.ordered ? 'ol' : 'ul'}>`
+  }
+}
+
+// Apply the custom renderer
+Object.assign(renderer, customRenderer)
+marked.use({ renderer })
+
+// Base email template
+const baseTemplate = (content: string) => `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #2D3748; max-width: 800px; margin: 0 auto; padding: 20px;">
+  ${content}
+  <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 32px 0;">
+  <footer style="color: #718096; font-size: 14px;">
+    <p>TechDeck Academy - AI-Powered Learning Platform</p>
+  </footer>
+</body>
+</html>
+`
+
+// Convert markdown to styled HTML
+const markdownToHtml = async (markdown: string): Promise<string> => {
+  return await marked.parse(markdown)
+}
+
+// Get appropriate greeting based on email style
+const getGreeting = (style: EmailStyle): string => {
+  switch (style) {
+    case 'casual':
+      return 'Hey there! 👋'
+    case 'formal':
+      return 'Dear Student,'
+    case 'technical':
+      return 'Greetings,'
+    default:
+      return 'Hello,'
+  }
 }
 
 export async function formatChallengeEmail(
   challenge: Challenge,
   emailStyle: EmailStyle
-): Promise<EmailContent> {
-  const intros = {
-    casual: "Hey there! Here's your next coding challenge 🚀",
-    formal: "Your next programming challenge is ready for review.",
-    technical: "New Technical Challenge Assignment"
-  }
-
-  const content = `
-${intros[emailStyle]}
+): Promise<{ subject: string; html: string }> {
+  const markdown = `
+${getGreeting(emailStyle)}
 
 # ${challenge.title}
 
 ${challenge.description}
 
 ## Requirements
-${challenge.requirements.map(r => `- ${r}`).join('\n')}
+${challenge.requirements.map(req => `- ${req}`).join('\n')}
 
 ## Examples
-${challenge.examples.map(e => `\`\`\`\n${e}\n\`\`\``).join('\n\n')}
+${challenge.examples.map(ex => `\`\`\`\n${ex}\n\`\`\``).join('\n\n')}
 
-${challenge.hints ? `## Hints
-${challenge.hints.map(h => `- ${h}`).join('\n')}` : ''}
+${challenge.hints ? `## Hints\n${challenge.hints.map(hint => `- ${hint}`).join('\n')}` : ''}
 
 ## Submission Instructions
-Please submit your solution by creating a new file in the \`submissions\` directory.
+1. Create your solution
+2. Save it in the \`submissions/\` directory with your challenge ID
+3. Commit and push your changes
 
-Topics: ${challenge.topics.join(', ')}
-Difficulty: ${challenge.difficulty}/10
+Good luck! 🚀
 `
 
   return {
-    subject: `Challenge: ${challenge.title}`,
-    content
+    subject: `New Challenge: ${challenge.title}`,
+    html: baseTemplate(await markdownToHtml(markdown))
   }
 }
 
@@ -58,17 +165,13 @@ export async function formatFeedbackEmail(
   submission: { challengeId: string },
   challenge: Challenge,
   emailStyle: EmailStyle
-): Promise<EmailContent> {
-  const intros = {
-    casual: "Hey! Here's your feedback on the recent challenge 🎯",
-    formal: "Your submission feedback is now available.",
-    technical: "Code Review Feedback"
-  }
+): Promise<{ subject: string; html: string }> {
+  const markdown = `
+${getGreeting(emailStyle)}
 
-  const content = `
-${intros[emailStyle]}
+# Feedback for: ${challenge.title}
 
-# Feedback for ${challenge.title}
+## Score: ${feedback.score}/100
 
 ## Strengths
 ${feedback.strengths.map(s => `- ${s}`).join('\n')}
@@ -79,40 +182,31 @@ ${feedback.weaknesses.map(w => `- ${w}`).join('\n')}
 ## Suggestions
 ${feedback.suggestions.map(s => `- ${s}`).join('\n')}
 
-## Score: ${feedback.score}/100
-
 ## Next Steps
 ${feedback.improvementPath}
+
+Keep up the great work! 💪
 `
 
   return {
     subject: `Feedback: ${challenge.title}`,
-    content
+    html: baseTemplate(await markdownToHtml(markdown))
   }
 }
 
 export async function sendEmail(
   config: Config,
-  content: EmailContent
+  content: { subject: string; html: string }
 ): Promise<void> {
   try {
     await resend.emails.send({
       from: 'TechDeck Academy <academy@techdeck.life>',
       to: [config.userEmail],
       subject: content.subject,
-      text: content.content, // Fallback plain text
-      html: convertMarkdownToHtml(content.content) // You'd want to implement this
+      html: content.html,
     })
   } catch (error) {
     console.error('Failed to send email:', error)
     throw error
   }
-}
-
-// Helper function to convert markdown to HTML
-// This is a placeholder - you'd want to use a proper markdown parser
-function convertMarkdownToHtml(markdown: string): string {
-  // For now, just return the markdown as is
-  // You should implement proper markdown to HTML conversion
-  return markdown
 } 
