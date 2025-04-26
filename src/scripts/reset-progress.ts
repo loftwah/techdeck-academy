@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import readline from 'readline';
+import { config } from '../config.js'; // Import the config object
 
 // Directories and files to remove/reset
 const ITEMS_TO_DELETE = [
@@ -136,12 +137,34 @@ async function resetAiMemory(): Promise<void> {
     }
 }
 
+async function resetConfigIntroductionFlag(): Promise<void> {
+    console.log('Resetting introductionSubmitted flag in config.ts...');
+    const configPath = path.resolve(process.cwd(), 'src/config.ts');
+    try {
+        let content = await fs.readFile(configPath, 'utf-8');
+
+        // Use a regex to find and replace the introductionSubmitted line,
+        // preserving whitespace and comments
+        const regex = /(\s*introductionSubmitted\s*:\s*)(?:true|false)(\s*,?.*)/;
+        if (regex.test(content)) {
+            content = content.replace(regex, '$1false$2');
+            await fs.writeFile(configPath, content, 'utf-8');
+            console.log('Successfully reset introductionSubmitted to false in config.ts.');
+        } else {
+            console.warn('Could not find introductionSubmitted flag in config.ts to reset.');
+        }
+    } catch (error) {
+        console.error('Failed to reset introductionSubmitted flag in config.ts:', error);
+    }
+}
+
 async function main() {
     console.log('\nThis script will reset your TechDeck Academy progress:');
     console.log('- Deleting:');
     ITEMS_TO_DELETE.forEach(item => console.log(`  - ${item}`));
     console.log('- Resetting:');
     console.log('  - ai-memory.md');
+    console.log('  - introductionSubmitted flag in config.ts');
     console.log('\nYour config.ts will NOT be modified.');
     console.log('This action involves deleting files and directories!');
 
@@ -159,12 +182,15 @@ async function main() {
                 // Reset ai-memory.md
                 await resetAiMemory();
 
+                // Reset introductionSubmitted flag in config.ts
+                await resetConfigIntroductionFlag();
+
                 // Ensure directory structure and .keep files
                 await ensureDirStructure();
 
                 console.log('\nReset complete.');
                 console.log('Deleted items:', ITEMS_TO_DELETE);
-                console.log('Reset items: ai-memory.md');
+                console.log('Reset items: ai-memory.md, introductionSubmitted flag in config.ts');
                 console.log('Directory structure and .keep files ensured.');
 
                 console.log('\nPlease commit these changes to finalize the reset (review carefully!):');
