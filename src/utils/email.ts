@@ -37,7 +37,7 @@ async function loadAndCompileTemplate(templateName: string): Promise<handlebars.
   }
 
   // Resolve path relative to the current file's directory
-  const templatePath = path.resolve(__dirname, '../email-templates', `${templateName}.hbs`);
+  const templatePath = path.resolve(__dirname, './email-templates', `${templateName}.hbs`);
   try {
     const templateSource = await fs.readFile(templatePath, 'utf-8');
     const compiledTemplate = handlebars.compile(templateSource);
