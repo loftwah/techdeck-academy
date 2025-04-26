@@ -15,8 +15,8 @@ async function initialize(): Promise<StudentProfile> {
   // Ensure all required directories exist
   await files.ensureDirectories()
 
-  // Load or create student profile
-  const studentProfile = await readStudentProfile()
+  // Load or create student profile, PASSING config
+  const studentProfile = await readStudentProfile(config)
   
   // Check if this is the first run
   const isFirstRun = !studentProfile.lastUpdated || 
@@ -98,7 +98,7 @@ async function processSubmission(submission: Submission): Promise<void> {
   // Save the feedback
   await files.writeFeedback(feedback)
   await stats.addSubmissionStats(submission, feedback)
-  await profile.updateProfileWithFeedback(challenge, feedback)
+  await profile.updateProfileWithFeedback(config, challenge, feedback)
 
   // Format and send email
   const emailContent = await email.formatFeedbackEmail(

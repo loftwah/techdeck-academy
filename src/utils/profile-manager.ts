@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs'
-import type { StudentProfile, Challenge, Feedback, MentorProfile, LetterInsights } from '../types.js'
+import type { StudentProfile, Challenge, Feedback, MentorProfile, LetterInsights, Config } from '../types.js'
 import { linusProfile } from '../profiles/linus.js'
 import { updateAIMemory } from './ai-memory-manager.js'
 
@@ -12,10 +12,11 @@ const DEFAULT_PROFILE: StudentProfile = {
   completedChallenges: 0,
   averageScore: 0,
   lastUpdated: new Date().toISOString(),
-  status: 'awaiting_introduction' // Default status
+  status: 'awaiting_introduction', // Default status
+  topicLevels: {}
 }
 
-export async function readStudentProfile(): Promise<StudentProfile> {
+export async function readStudentProfile(config: Config): Promise<StudentProfile> {
   try {
     const content = await fs.readFile(PROFILE_FILE, 'utf-8')
     let profile = JSON.parse(content) as StudentProfile
@@ -23,13 +24,26 @@ export async function readStudentProfile(): Promise<StudentProfile> {
     if (!profile.status) {
       profile.status = 'awaiting_introduction' 
     }
+    // Optionally merge/update topicLevels if config changed?
+    // For now, just return the existing profile
     return profile
   } catch (error) {
-    // Return default profile if file doesn't exist
-    console.log('Student profile not found, creating default profile.')
+    // Create default profile WITH topic levels from config
+    console.log('Student profile not found, creating default profile with configured topics.')
+    const defaultProfile: StudentProfile = {
+      userId: config.githubUsername || 'default-user', // Use username from config
+      currentSkillLevel: 1, // Initial overall level
+      completedChallenges: 0,
+      averageScore: 0,
+      lastUpdated: new Date().toISOString(),
+      status: 'awaiting_introduction', // Default status
+      topicLevels: Object.fromEntries(
+        Object.entries(config.topics).map(([topic, { currentLevel }]) => [topic, currentLevel])
+      ) // Populate from config
+    }
     // Ensure the default profile is written back if created
-    await writeStudentProfile(DEFAULT_PROFILE);
-    return DEFAULT_PROFILE
+    await writeStudentProfile(defaultProfile);
+    return defaultProfile
   }
 }
 
@@ -38,16 +52,16 @@ export async function writeStudentProfile(profile: StudentProfile): Promise<void
 }
 
 // New function to update the profile status to active
-export async function setProfileStatusActive(): Promise<void> {
+export async function setProfileStatusActive(config: Config): Promise<void> {
   try {
-    const profile = await readStudentProfile();
+    const profile = await readStudentProfile(config);
     if (profile.status !== 'active') {
       profile.status = 'active';
       profile.lastUpdated = new Date().toISOString();
       await writeStudentProfile(profile);
       console.log('Student profile status updated to active.');
       // Log this significant event to AI memory as well
-      await logAIMemoryEvent('Student status set to ACTIVE (first interaction processed).');
+      await logAIMemoryEvent(config, 'Student status set to ACTIVE (first interaction processed).');
     } else {
       console.log('Profile status is already active.');
     }
@@ -57,10 +71,11 @@ export async function setProfileStatusActive(): Promise<void> {
 }
 
 export async function updateProfileWithFeedback(
+  config: Config,
   challenge: Challenge,
   feedback: Feedback
 ): Promise<void> {
-  const profile = await readStudentProfile()
+  const profile = await readStudentProfile(config)
   const now = new Date().toISOString()
 
   // --- Update Core Metrics in JSON Profile ---
@@ -92,7 +107,11 @@ export async function updateProfileWithFeedback(
   }
 }
 
-export async function logAIMemoryEvent(eventDescription: string, section: 'recentActivity' | 'snapshot' | 'history' = 'recentActivity'): Promise<void> {
+export async function logAIMemoryEvent(
+  config: Config,
+  eventDescription: string, 
+  section: 'recentActivity' | 'snapshot' | 'history' = 'recentActivity'
+): Promise<void> {
   const now = new Date().toISOString()
   const memoryEntry = `*   [${now}] ${eventDescription}`
 
@@ -104,7 +123,7 @@ export async function logAIMemoryEvent(eventDescription: string, section: 'recen
   }
   // Also update the timestamp in the minimal profile
   try {
-    const profile = await readStudentProfile()
+    const profile = await readStudentProfile(config)
     profile.lastUpdated = now
     await writeStudentProfile(profile)
   } catch (error) {
@@ -120,6 +139,7 @@ export async function loadMentorProfile(profileName: string): Promise<MentorProf
 }
 
 export async function updateProfileFromLetterInsights(
+  config: Config,
   insights: LetterInsights
 ): Promise<void> {
   if (!insights || Object.keys(insights).length === 0) {
@@ -148,7 +168,7 @@ export async function updateProfileFromLetterInsights(
 
   // --- Update Minimal JSON Profile Timestamp ---
   try {
-    const profile = await readStudentProfile()
+    const profile = await readStudentProfile(config)
     profile.lastUpdated = now
     // Optionally update core metrics like skill level IF the insight implies a direct, simple update AND we keep that field
     // Example: if (insights.skillLevelAdjustment) profile.currentSkillLevel = Math.max(1, Math.min(10, profile.currentSkillLevel + insights.skillLevelAdjustment))
