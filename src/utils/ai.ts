@@ -178,18 +178,22 @@ export async function generateChallenge(
   
   console.log('Generating challenge with structured output schema...');
   
-  // Correct structure for GenerateContentRequest with schema
+  // Correct structure for Node.js SDK based on docs
   const request = {
+      model: 'gemini-1.5-flash', // Assuming this model is intended
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { // Parameters for generation
-          responseSchema: ChallengeSchema, // Specify the schema here
-          // responseMimeType: 'application/json' // Mime type should be inferred from schema
-          // Add other generation configs like temperature, topK etc. if needed
+      config: { // Config object holds schema and mime type for Node.js SDK
+          responseMimeType: 'application/json', 
+          responseSchema: ChallengeSchema
+          // Add other generation configs like temperature here if needed
       }
+      // generationConfig removed as schema/mimeType are in config
   };
 
-  // Type assertion if needed, or ensure request matches GenerateContentRequest type
-  const result = await model.generateContent(request as any); // Use type assertion or ensure type match
+  // Call generateContent with the request object
+  // Note: model name is usually part of the model object instance, 
+  // but let's include it here if the method expects it directly
+  const result = await model.generateContent(request as any); 
 
   const response = result.response;
   // With responseSchema, the text *should* be valid JSON directly
