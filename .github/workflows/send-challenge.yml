@@ -40,7 +40,7 @@ jobs:
         run: |
           # Get current schedule from config
           SCHEDULE=$(node -e "
-            import('./dist/config.js').then(({config}) => {
+            import('./dist/index.js').then(({config}) => {
               console.log(config.schedule);
             });
           ")

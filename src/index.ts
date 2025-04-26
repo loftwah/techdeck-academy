@@ -115,10 +115,11 @@ async function archiveOldContent(): Promise<void> {
   console.log('Archive operation completed')
 }
 
-// Export the main functions
+// Export the main functions and config
 export {
   initialize,
   generateChallenge,
   processSubmission,
-  archiveOldContent
+  archiveOldContent,
+  config
 } 
