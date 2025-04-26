@@ -257,44 +257,42 @@ export async function generateChallenge(
   console.log('Raw AI response:', text);
 
   // Use Zod schema for parsing and validation
-  let challenge: Challenge;
+  let parsedData: any; // Use 'any' temporarily before validation
   try {
     // Try parsing directly
-    const parsedData = JSON.parse(text);
-    challenge = ZodChallengeSchema.parse(parsedData); // Validate using Zod
+    parsedData = JSON.parse(text);
   } catch (e) {
-    console.error("Failed to parse/validate Challenge JSON directly:", e);
+    console.error("Failed to parse JSON directly:", e);
     
     // Updated Regex Fallback: Extract content within ```json ... ``` blocks
     const markdownJsonRegex = /```json\n([\s\S]*?)\n```/;
     const match = text.match(markdownJsonRegex);
     
     if (match && match[1]) {
-      // match[1] contains the captured JSON string
       const extractedJson = match[1];
       try {
-        console.log("Attempting to parse/validate extracted JSON from Markdown block...");
-        const parsedFallback = JSON.parse(extractedJson);
-        challenge = ZodChallengeSchema.parse(parsedFallback); // Validate fallback using Zod
+        console.log("Attempting to parse extracted JSON from Markdown block...");
+        parsedData = JSON.parse(extractedJson);
         console.log("Successfully parsed JSON from Markdown block.");
       } catch (nestedE) {
-        console.error("Fallback JSON parsing/validation failed.", nestedE);
-        // Include Zod error details if available
+        console.error("Fallback JSON parsing failed.", nestedE);
         const errorDetails = nestedE instanceof Error ? nestedE.message : String(nestedE);
-        throw new Error(`Extracted JSON from Markdown block was invalid: ${errorDetails}`);
+        throw new Error(`Extracted JSON from Markdown block was invalid (parse error): ${errorDetails}`);
       }
     } else {
-      // If regex doesn't match, throw original error
-      console.error("Could not find JSON within Markdown block.");
+      console.error("Could not find JSON within Markdown block or parse directly.");
       const errorDetails = e instanceof Error ? e.message : String(e);
-      throw new Error(`AI response did not contain valid Challenge JSON and was not in expected Markdown format: ${errorDetails}`);
+      throw new Error(`AI response did not contain valid JSON and was not in expected Markdown format: ${errorDetails}`);
     }
   }
 
-  // Validation of ID/Timestamp and optional fields happens AFTER successful parsing
-  // Zod handles required fields, types, and formats defined in the schema
-  // Ensure the challenge has a valid ID (assign if missing)
-  if (!challenge.id || typeof challenge.id !== 'string' || !challenge.id.match(/^CC-\d{3,}$/)) {
+  // Now we have parsedData, proceed to augment and validate
+  
+  // Create a mutable object to hold challenge data
+  let challengeData: Partial<Challenge> = { ...parsedData };
+
+  // Ensure the challenge has a valid ID (assign if missing) BEFORE validation
+  if (!challengeData.id || typeof challengeData.id !== 'string' || !challengeData.id.match(/^CC-\d{3,}$/)) {
     const existingChallenges = await files.listChallenges();
     const existingIds = existingChallenges
       .map(id => id.match(/^CC-(\d+)/))
@@ -304,22 +302,39 @@ export async function generateChallenge(
     const maxId = Math.max(0, ...existingIds);
     const newId = `CC-${String(maxId + 1).padStart(3, '0')}`;
     
-    console.warn(`Generated challenge had invalid or missing ID (${challenge.id}). Assigning new ID: ${newId}`);
-    challenge.id = newId;
+    console.warn(`Generated challenge had invalid or missing ID (${challengeData.id}). Assigning new ID: ${newId}`);
+    challengeData.id = newId;
   }
   
-  // Ensure createdAt is set
-  challenge.createdAt = challenge.createdAt || new Date().toISOString();
+  // Ensure createdAt is set BEFORE validation
+  challengeData.createdAt = challengeData.createdAt || new Date().toISOString();
   
-  // Basic validation of other required fields 
-  if (!challenge.title || typeof challenge.title !== 'string') throw new Error('Challenge title is missing or invalid');
-  if (!challenge.description || typeof challenge.description !== 'string') throw new Error('Challenge description is missing or invalid');
-  // Initialize optional arrays if missing AFTER parsing
-  if (!Array.isArray(challenge.requirements)) challenge.requirements = [];
-  if (!Array.isArray(challenge.examples)) challenge.examples = [];
-  if (!Array.isArray(challenge.hints)) challenge.hints = [];
-  if (!Array.isArray(challenge.topics)) challenge.topics = [];
-  if (typeof challenge.difficulty !== 'number' || challenge.difficulty < 1 || challenge.difficulty > 10) challenge.difficulty = config.difficulty; // Default to config difficulty
+  // Initialize optional arrays if missing BEFORE validation
+  // Zod's `default()` handles this, but doing it defensively here is okay too.
+  challengeData.requirements = challengeData.requirements || [];
+  challengeData.examples = challengeData.examples || [];
+  challengeData.hints = challengeData.hints || [];
+  challengeData.topics = challengeData.topics || []; // topics is required by schema, ensure it exists
+
+  // Ensure difficulty is set (using config default if necessary) BEFORE validation
+  if (typeof challengeData.difficulty !== 'number' || challengeData.difficulty < 1 || challengeData.difficulty > 10) {
+      console.warn(`Generated challenge had invalid or missing difficulty (${challengeData.difficulty}). Defaulting to config difficulty: ${config.difficulty}`);
+      challengeData.difficulty = config.difficulty;
+  }
+
+  // NOW, validate the augmented object against the Zod schema
+  let challenge: Challenge;
+  try {
+      challenge = ZodChallengeSchema.parse(challengeData);
+  } catch (zodError) {
+      console.error("Zod validation failed after augmenting ID and createdAt:", zodError);
+       // Include Zod error details if available
+      const errorDetails = zodError instanceof Error ? zodError.message : String(zodError);
+      throw new Error(`Challenge data failed validation after processing: ${errorDetails}`);
+  }
+
+  // Post-validation checks removed as Zod handles them
+  // (e.g., title/description presence, array types are handled by the schema)
 
   return challenge;
 }
