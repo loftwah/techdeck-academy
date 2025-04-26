@@ -9,12 +9,6 @@ import * as files from '../utils/files.js'; // For archiving and directory manag
 import { readAIMemoryRaw } from '../utils/ai-memory-manager.js'; // Import memory reader
 import type { StudentProfile, Config, MentorProfile, LetterResponse } from '../types.js';
 
-const LETTERS_TO_MENTOR_DIR = path.join('letters', 'to-mentor');
-const LETTERS_FROM_MENTOR_DIR = path.join('letters', 'from-mentor');
-// Archive directory structure: archive/letters/to-mentor/ and archive/letters/from-mentor/
-const ARCHIVE_LETTERS_TO_MENTOR_DIR = path.join('archive', 'letters', 'to-mentor');
-const ARCHIVE_LETTERS_FROM_MENTOR_DIR = path.join('archive', 'letters', 'from-mentor');
-
 async function processSingleLetter(letterPath: string, config: Config, aiMemory: string, mentor: MentorProfile, studentStatus: string): Promise<boolean> {
     console.log(`Processing letter: ${letterPath}`);
     const letterFilename = path.basename(letterPath);
@@ -34,7 +28,7 @@ async function processSingleLetter(letterPath: string, config: Config, aiMemory:
 
         // --- 2. Save Mentor Response ---
         const responseFileName = `${path.basename(letterFilename, path.extname(letterFilename))}-response.md`;
-        const responseFilePath = path.join(LETTERS_FROM_MENTOR_DIR, responseFileName);
+        const responseFilePath = path.join(files.PATHS.letters.fromMentor, responseFileName);
         await files.ensureDirectories(); // Corrected function name
         await fs.writeFile(responseFilePath, mentorResponse.content);
         console.log(`Mentor response saved to: ${responseFilePath}`);
@@ -59,9 +53,12 @@ async function processSingleLetter(letterPath: string, config: Config, aiMemory:
         }
 
         // --- 5. Archive Processed Letter ---
-        // Use the generic archiveFile function
-        await files.archiveFile(letterPath, ARCHIVE_LETTERS_TO_MENTOR_DIR);
-        console.log(`Archived original letter to: ${path.join(ARCHIVE_LETTERS_TO_MENTOR_DIR, path.basename(letterPath))}`); // Log correct path
+        // Use the generic archiveFile function with the correct base archive path from files.PATHS
+        await files.archiveFile(letterPath, files.PATHS.archive.letters); // Use base letters archive path
+        // Construct the expected final archive path for logging based on how archiveFile works
+        const monthDir = new Date().toISOString().slice(0, 7); // YYYY-MM
+        const expectedArchivePath = path.join(files.PATHS.archive.letters, monthDir, path.basename(letterPath));
+        console.log(`Archived original letter to: ${expectedArchivePath}`); // Log calculated path
 
         return true; // Indicate success
 

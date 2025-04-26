@@ -75,8 +75,58 @@ jobs:
           
           echo "should_run=$SHOULD_RUN" >> $GITHUB_OUTPUT
 
+      - name: Check for outstanding challenges
+        id: check-outstanding
+        env:
+          # Needed for file utilities
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          # Use node script to check for challenge files without corresponding feedback
+          node -e "
+            import path from 'path';
+            import fs from 'fs/promises';
+            // Assuming files utilities are accessible after build in dist/utils/files.js
+            // Need to adjust the import path based on actual build output structure
+            import { PATHS, fileExists } from './dist/utils/files.js'; 
+            
+            async function hasOutstandingChallenge() {
+              try {
+                const challengeFiles = await fs.readdir(PATHS.challenges);
+                for (const challengeFile of challengeFiles) {
+                  if (!challengeFile.endsWith('.json')) continue; // Skip non-json files
+                  const challengeId = path.basename(challengeFile, '.json');
+                  // Assuming feedback is named exactly like the challenge ID + .json in the feedback dir
+                  const feedbackPath = path.join(PATHS.feedback, `${challengeId}.json`);
+                  if (!await fileExists(feedbackPath)) {
+                    console.log(`Outstanding challenge found: ${challengeId} (no feedback file at ${feedbackPath})`);
+                    return true; // Found an outstanding challenge
+                  }
+                }
+              } catch (error) {
+                 // If challenges dir doesn't exist, there are no outstanding challenges
+                 if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+                   console.log('Challenges directory does not exist, assuming no outstanding challenges.');
+                   return false;
+                 }
+                 // Log other errors but assume no outstanding challenge to avoid blocking unnecessarily
+                 console.error('Error checking for outstanding challenges:', error);
+                 return false; 
+              }
+              console.log('No outstanding challenges found.');
+              return false; // No outstanding challenges found
+            }
+
+            hasOutstandingChallenge().then(outstanding => {
+              console.log(`Setting outstanding_challenge output to: ${outstanding}`);
+              // Use GITHUB_OUTPUT to pass result to next steps
+              fs.appendFile(process.env.GITHUB_OUTPUT || '', `outstanding_challenge=${outstanding}\\n`);
+            });
+          "
+
       - name: Generate and send challenge or welcome
-        if: steps.check-schedule.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
+        # Add check for outstanding challenges and ensure schedule allows it OR manual trigger
+        if: steps.check-outstanding.outputs.outstanding_challenge == 'false' && (steps.check-schedule.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch')
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}

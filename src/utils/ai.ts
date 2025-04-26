@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai'
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, FunctionDeclarationSchema } from '@google/generative-ai'
 import { environment } from '../config.js'
 import * as files from './files.js'; // Import file utilities
 import { readAIMemoryRaw } from './ai-memory-manager.js'; // Import memory reader
@@ -14,7 +14,7 @@ import type {
 } from '../types.js'
 
 // Initialize Gemini AI
-const apiKey = process.env.GEMINI_API_KEY
+const apiKey = environment.GEMINI_API_KEY
 if (!apiKey) {
   throw new Error('GEMINI_API_KEY environment variable is not set')
 }
@@ -168,7 +168,7 @@ Please provide feedback as the ${mentorProfile.name} mentor (${mentorProfile.sty
 Format the response as a JSON Feedback object with fields: submissionId, strengths (string[]), weaknesses (string[]), suggestions (string[]), score (number), improvementPath (string), createdAt (ISO timestamp). Ensure the submissionId field is correctly set to "${submission.challengeId}".`;
 }
 
-// Refactored: Uses responseSchema for reliable JSON output
+// Fixed version of the generateChallenge function
 export async function generateChallenge(
   config: Config,
   aiMemory: string, 
@@ -178,50 +178,60 @@ export async function generateChallenge(
   
   console.log('Generating challenge with structured output schema...');
   
-  // Correct structure for Node.js SDK based on docs
-  const request = {
-      model: 'gemini-1.5-flash', // Assuming this model is intended
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: { // Config object holds schema and mime type for Node.js SDK
-          responseMimeType: 'application/json', 
-          responseSchema: ChallengeSchema
-          // Add other generation configs like temperature here if needed
-      }
-      // generationConfig removed as schema/mimeType are in config
-  };
-
-  // Call generateContent with the request object
-  // Note: model name is usually part of the model object instance, 
-  // but let's include it here if the method expects it directly
-  const result = await model.generateContent(request as any); 
+  let result;
+  try {
+      // Fixed request structure for Node.js SDK
+      result = await model.generateContent({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+              temperature: 0.7,
+          },
+          tools: [{
+              functionDeclarations: [{
+                  name: "generateChallenge",
+                  description: "Generate a coding challenge",
+                  parameters: ChallengeSchema as FunctionDeclarationSchema
+              }]
+          }]
+      });
+  } catch (error) {
+      console.error("Error calling AI model for challenge generation:", error);
+      // Consistently throw an error on API failure
+      throw new Error(`AI API call failed during challenge generation: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   const response = result.response;
-  // With responseSchema, the text *should* be valid JSON directly
-  // But keep robust parsing just in case.
-  let text = response.text();
-  console.log('Raw AI JSON response:', text);
+  // It's possible response or text() could be null/undefined if API call failed in subtle ways
+  if (!response) {
+      throw new Error("AI API call returned no response during challenge generation.");
+  }
+  const text = response.text();
+   if (typeof text !== 'string') {
+       throw new Error("AI API call returned non-text response during challenge generation.");
+   }
+  console.log('Raw AI response:', text);
 
   let challenge: Challenge;
   try {
-    // Directly parse the text, assuming it's JSON due to schema
+    // Try to parse the response as JSON directly
     challenge = JSON.parse(text) as Challenge;
   } catch (e) {
-      console.error("Failed to parse Challenge JSON even with schema:", e);
-      console.error("Raw AI Response Text:", text); 
-      // Maybe try basic extraction again as a fallback?
-      const jsonRegex = /{[\s\S]*}/; // More basic regex
-      const match = text.match(jsonRegex);
-       if (match && match[0]) {
-          try {
-              console.log("Attempting to parse extracted JSON as fallback...");
-              challenge = JSON.parse(match[0]) as Challenge;
-          } catch (nestedE) {
-              console.error("Fallback JSON parsing failed.", nestedE);
-              throw new Error("AI response for challenge generation was not valid JSON, even with schema and fallback parsing.");
-          }
-       } else {
-           throw new Error("AI response for challenge generation did not contain valid JSON, even with schema.");
-       }
+    console.error("Failed to parse Challenge JSON:", e);
+    console.error("Raw AI Response Text:", text); 
+    // Try to extract JSON with regex as fallback
+    const jsonRegex = /{[[\s\S]]*}/; 
+    const match = text.match(jsonRegex);
+    if (match && match[0]) {
+      try {
+        console.log("Attempting to parse extracted JSON as fallback...");
+        challenge = JSON.parse(match[0]) as Challenge;
+      } catch (nestedE) {
+        console.error("Fallback JSON parsing failed.", nestedE);
+        throw new Error("AI response for challenge generation was not valid JSON, even with fallback parsing.");
+      }
+    } else {
+      throw new Error("AI response for challenge generation did not contain valid JSON.");
+    }
   }
   
   // Ensure the challenge has a valid ID
@@ -268,9 +278,27 @@ export async function generateFeedback(
 ): Promise<Feedback> {
   const mentorProfile = await profile.loadMentorProfile(mentorProfileName); // Load mentor profile
   const prompt = await generateFeedbackPrompt(challenge, submission, aiMemory, mentorProfile); // Pass aiMemory
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
-  let text = response.text();
+  
+  let result;
+  try {
+      result = await model.generateContent(prompt);
+  } catch (error) {
+      console.error("Error calling AI model for feedback generation:", error);
+       // Consistently throw an error on API failure
+      throw new Error(`AI API call failed during feedback generation: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  
+  const response = result.response;
+   // It's possible response or text() could be null/undefined if API call failed in subtle ways
+   if (!response) {
+       throw new Error("AI API call returned no response during feedback generation.");
+   }
+   const textResponse = response.text(); // Renamed to avoid conflict with 'text' variable below
+    if (typeof textResponse !== 'string') {
+        throw new Error("AI API call returned non-text response during feedback generation.");
+    }
+    
+  let text = textResponse; // Assign to 'text' for existing parsing logic
   
   // ... existing JSON extraction ...
   const jsonRegex = /```json\n([\s\S]*?)\n```/;
@@ -317,20 +345,32 @@ export async function generateFeedback(
 }
 
 // Refactored: Adds studentStatus parameter to adjust prompt for introductions
+// Refactored: Includes config details in the prompt
 export async function generateLetterResponsePrompt(
   question: string,
   correspondence: string[],
   aiMemory: string,
   mentorProfile: MentorProfile,
-  config: Config,
+  config: Config, // Now used in the prompt
   studentStatus: string // Added parameter
 ): Promise<string> {
-  const basePrompt = `You are the ${mentorProfile.name} mentor (${mentorProfile.style}, ${mentorProfile.tone}). Respond to the student's letter below, using the AI Teacher's Notes for context.
+  // Prepare config details for the prompt
+  const configDetails = `
+Student Preferences & Configuration:
+Configured Topics & Levels: ${JSON.stringify(config.topics)}
+Preferred Difficulty: ${config.difficulty}/10
+Preferred Challenge Types: ${config.preferredChallengeTypes?.join(', ') || 'Not specified'}
+User Email: ${config.userEmail}
+GitHub Username: ${config.githubUsername}
+`;
+
+  const basePrompt = `You are the ${mentorProfile.name} mentor (${mentorProfile.style}, ${mentorProfile.tone}). Respond to the student's letter below, using the AI Teacher's Notes and the student's configuration for context.
 
 --- START AI TEACHER'S NOTES ---
 ${aiMemory}
 --- END AI TEACHER'S NOTES ---
 
+${configDetails}
 Recent Correspondence (if any):
 ${correspondence.join('\n---\n')}
 
@@ -384,23 +424,36 @@ export async function generateLetterResponse(
     config,
     studentStatus // Pass status down
   );
-  const result = await model.generateContent(prompt);
-  const response = await result.response;
-  const text = response.text();
+  
+  let result;
+  try {
+      result = await model.generateContent(prompt);
+  } catch (error) {
+      console.error("Error calling AI model for letter response generation:", error);
+      throw new Error(`AI API call failed during letter response generation: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  
+  const response = result.response;
+   if (!response) {
+       throw new Error("AI API call returned no response during letter response generation.");
+   }
+   const text = response.text();
+    if (typeof text !== 'string') {
+        throw new Error("AI API call returned non-text response during letter response generation.");
+    }
   
   try {
-    return await parseLetterResponse(text); // Use existing parser
+    // parseLetterResponse will now throw on error
+    return await parseLetterResponse(text); 
   } catch (error) {
-      console.error("Failed to generate or parse letter response.", error);
-      // Provide a fallback response in case of error
-      return {
-          content: "I apologize, but I encountered an issue generating a full response. Could you please rephrase your question or try again later?",
-          insights: { flags: ['ai_error'] }
-      };
+      console.error("Failed to parse letter response:", error);
+      // Re-throw the parsing error
+       throw new Error(`Failed to parse AI response for letter: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 // Ensure parseLetterResponse function definition exists
+// MODIFIED: Throws error on failure instead of returning fallback object
 export async function parseLetterResponse(responseText: string): Promise<LetterResponse> {
   let text = responseText;
   // Extract JSON from markdown code block if present
@@ -414,10 +467,11 @@ export async function parseLetterResponse(responseText: string): Promise<LetterR
     const parsed = JSON.parse(text) as LetterResponse;
     // Basic validation (can be expanded)
     if (!parsed.content || typeof parsed.content !== 'string') {
-      throw new Error('Invalid or missing content field in AI response');
+      // Throw specific error for invalid content
+      throw new Error('Invalid or missing content field');
     }
     if (!parsed.insights || typeof parsed.insights !== 'object') {
-        // If insights are missing, create an empty object
+        // If insights are missing, create an empty object (this might be acceptable)
         console.warn('Insights object missing in AI response, creating empty one.');
         parsed.insights = {}; 
     }
@@ -425,15 +479,13 @@ export async function parseLetterResponse(responseText: string): Promise<LetterR
   } catch (error) {
     console.error('Error parsing AI letter response:', error);
     console.error('Raw AI response text:', responseText);
-    // Fallback response if parsing fails
-     return {
-      content: `I encountered an issue processing my thoughts on your letter. Could you perhaps rephrase or clarify?\n\nRaw Error Data (for debugging):\n${responseText}`, // Include raw text for debugging
-      insights: {} // Return empty insights on failure
-    };
+    // Throw an error instead of returning a fallback object
+    throw new Error(`Failed to parse JSON from AI letter response: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 // Function to generate a narrative digest summary
+// MODIFIED: Throws error on failure
 export async function generateDigestSummary(
   aiMemory: string,
   digestType: 'weekly' | 'monthly' | 'quarterly'
@@ -446,15 +498,24 @@ ${aiMemory}
 
 Generate only the narrative summary text (markdown format allowed).`;
 
+  let result;
   try {
     console.log(`Generating ${digestType} digest summary from AI memory...`);
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const summaryText = response.text();
-    console.log(`AI ${digestType} digest summary generated successfully.`);
-    return summaryText.trim();
+    result = await model.generateContent(prompt);
   } catch (error) {
-    console.error(`Error generating ${digestType} AI digest summary:`, error);
-    return `Error: Could not generate AI summary for the ${digestType} report.`; // Fallback message
+      console.error(`Error calling AI model for ${digestType} digest summary:`, error);
+      throw new Error(`AI API call failed during ${digestType} digest summary generation: ${error instanceof Error ? error.message : String(error)}`);
   }
+  
+  const response = result.response;
+  if (!response) {
+       throw new Error(`AI API call returned no response during ${digestType} digest summary generation.`);
+   }
+   const summaryText = response.text();
+    if (typeof summaryText !== 'string') {
+        throw new Error(`AI API call returned non-text response during ${digestType} digest summary generation.`);
+    }
+    
+  console.log(`AI ${digestType} digest summary generated successfully.`);
+  return summaryText.trim();
 }
