@@ -6,7 +6,8 @@ import type {
   Challenge, 
   Feedback, 
   EmailStyle, 
-  Config 
+  Config,
+  MentorProfile
 } from '../types.js'
 
 const resend = new Resend(environment.RESEND_API_KEY)
@@ -131,6 +132,15 @@ export async function formatChallengeEmail(
   challenge: Challenge,
   emailStyle: EmailStyle
 ): Promise<{ subject: string; html: string }> {
+  // Format examples properly
+  const formattedExamples = challenge.examples.map(ex => {
+    // If example is an object, format it properly
+    if (typeof ex === 'object' && ex !== null) { // Check for null too
+      return `\`\`\`json\n${JSON.stringify(ex, null, 2)}\n\`\`\``; // Add json tag
+    }
+    return `\`\`\`\n${ex}\n\`\`\``;
+  }).join('\n\n');
+
   const markdown = `
 ${getGreeting(emailStyle)}
 
@@ -142,13 +152,13 @@ ${challenge.description}
 ${challenge.requirements.map(req => `- ${req}`).join('\n')}
 
 ## Examples
-${challenge.examples.map(ex => `\`\`\`\n${ex}\n\`\`\``).join('\n\n')}
+${formattedExamples} // Use the formatted examples
 
 ${challenge.hints ? `## Hints\n${challenge.hints.map(hint => `- ${hint}`).join('\n')}` : ''}
 
 ## Submission Instructions
-1. Create your solution
-2. Save it in the \`submissions/\` directory with your challenge ID
+1. Create your solution (filename should include the challenge ID: ${challenge.id}) // Add ID instruction
+2. Save it in the \`submissions/\` directory
 3. Commit and push your changes
 
 Good luck! 🚀
@@ -252,6 +262,53 @@ Keep pushing forward! 🚀
 
   return {
     subject: `Your ${periodType} TechDeck Academy Progress Report`,
+    html: baseTemplate(await markdownToHtml(markdown))
+  }
+}
+
+// Add the new welcome email function
+export async function formatWelcomeEmail(
+  config: Config,
+  mentorProfile: MentorProfile
+): Promise<{ subject: string; html: string }> {
+  const markdown = `
+${getGreeting(config.emailStyle)}
+
+# Welcome to TechDeck Academy!
+
+I'll be your ${mentorProfile.name} mentor for your journey in learning ${config.subjectAreas.join(', ')}.
+
+## How This Works
+
+1. **Challenges:** Based on your configuration, you'll receive challenges on ${config.schedule === 'daily' ? 'a daily basis' : config.schedule === 'threePerWeek' ? 'Monday, Wednesday, and Friday' : 'every Monday'}.
+
+2. **Submissions:** When you complete a challenge, save your solution in the \`submissions/\` directory with the challenge ID in the filename.
+
+3. **Feedback:** After you submit, I'll review your work and provide feedback based on my teaching style and your progress.
+
+4. **Questions:** If you have questions, place a markdown file in the \`letters/to-mentor/\` directory. I'll respond promptly.
+
+## About Me
+
+${mentorProfile.personality}
+
+My feedback style: ${mentorProfile.feedbackStyle}
+
+## Next Steps
+
+**Please send me a letter:** Place a markdown file in \`letters/to-mentor/\` telling me about:
+- Your current skills
+- What you want to learn
+- How you prefer to learn
+- Any specific areas you want to focus on
+
+I'll use this to tailor your learning experience.
+
+Looking forward to working with you!
+`
+
+  return {
+    subject: `Welcome to TechDeck Academy - Your Learning Journey Begins`,
     html: baseTemplate(await markdownToHtml(markdown))
   }
 }

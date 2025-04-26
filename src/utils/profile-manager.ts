@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs'
-import type { StudentProfile, Challenge, Feedback } from '../types.js'
+import type { StudentProfile, Challenge, Feedback, MentorProfile } from '../types.js'
+import { linusProfile } from '../profiles/linus.js'
 
 const PROFILE_FILE = 'student-profile.json'
 
@@ -136,4 +137,11 @@ export async function addNotes(notes: string): Promise<void> {
   profile.notes = `${new Date().toISOString()}: ${notes}\n${profile.notes}`
   profile.lastUpdated = new Date().toISOString()
   await writeStudentProfile(profile)
+}
+
+export async function loadMentorProfile(profileName: string): Promise<MentorProfile> {
+  if (profileName !== 'linus') {
+    console.warn(`Mentor profile '${profileName}' not found. Defaulting to Linus Torvalds.`)
+  }
+  return linusProfile
 } 

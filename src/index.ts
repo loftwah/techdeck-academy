@@ -5,6 +5,7 @@ import * as files from './utils/files.js'
 import * as stats from './utils/stats-manager.js'
 import * as summary from './utils/summary-manager.js'
 import * as profile from './utils/profile-manager.js'
+import { readStudentProfile, loadMentorProfile } from './utils/profile-manager.js'
 import type { Challenge, Submission, StudentProfile } from './types.js'
 
 // Initialize the application
@@ -13,7 +14,22 @@ async function initialize(): Promise<StudentProfile> {
   await files.ensureDirectories()
 
   // Load or create student profile
-  const studentProfile = await profile.readStudentProfile()
+  const studentProfile = await readStudentProfile()
+  
+  // Check if this is the first run
+  const isFirstRun = !studentProfile.lastUpdated || 
+                     studentProfile.completedChallenges === 0;
+
+  if (isFirstRun) {
+    console.log('First-time user detected. Sending welcome email...');
+    // Load mentor profile
+    const mentorProfile = await loadMentorProfile(config.mentorProfile);
+    const emailContent = await email.formatWelcomeEmail(config, mentorProfile);
+    await email.sendEmail(config, emailContent);
+    
+    // Potentially update student profile's lastUpdated here if needed
+    // For now, just sending email and proceeding.
+  }
 
   // Check if stats need compaction
   if (await stats.shouldCompactStats()) {

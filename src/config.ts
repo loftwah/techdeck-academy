@@ -19,18 +19,28 @@ export const config: Config = {
   // Learning preferences
   subjectAreas: ['programming', 'devops'],
   topics: {
-    programming: ['typescript', 'javascript', 'python'],
-    devops: ['docker', 'kubernetes', 'ci-cd'],
-    networking: ['tcp-ip', 'http', 'dns'],
-    security: ['cryptography', 'web-security', 'authentication'],
-    cloud: ['aws', 'azure', 'gcp'],
-    databases: ['sql', 'nosql', 'graph-databases']
+    programming: {
+      'typescript': { level: 3, relatedTopics: ['javascript', 'type-systems'] },
+      'javascript': { level: 4 },
+      'python': { level: 2, relatedTopics: ['scripting', 'data-science'] }
+    },
+    devops: {
+      'docker': { level: 2, relatedTopics: ['containerization'] },
+      'kubernetes': { level: 1, relatedTopics: ['docker', 'orchestration'] },
+      'ci-cd': { level: 3, relatedTopics: ['github-actions', 'jenkins'] }
+    },
+    aws: {
+      'ec2': { level: 3 },
+      'rds': { level: 2, relatedTopics: ['databases'] },
+      's3': { level: 4 }
+    }
+    // Add other subject areas and topics as needed
   },
   difficulty: 5,
   sessionLength: 60,
 
   // Style preferences
-  mentorProfile: 'supportive',
+  mentorProfile: 'linus', // Default to linus for now
   emailStyle: 'casual',
 
   // Schedule

@@ -1,5 +1,12 @@
 // Mentor and Email Types
-export type MentorProfile = 'linus' | 'supportive' | 'technical'
+export interface MentorProfile {
+  name: string;
+  personality: string;
+  feedbackStyle: string;
+  challengeStyle: string;
+  responseStyle: string;
+}
+
 export type EmailStyle = 'casual' | 'formal' | 'technical'
 export type Schedule = 'daily' | 'threePerWeek' | 'weekly'
 export type SubjectArea = 'programming' | 'devops' | 'networking' | 'security' | 'cloud' | 'databases'
@@ -47,6 +54,12 @@ export interface StudentProfile {
 }
 
 // Configuration Types
+export interface TopicConfig {
+  level: number; // 1-10 indicating user's current level
+  relatedTopics?: string[]; // Related topics that might be relevant
+  description?: string; // Optional description for AI context
+}
+
 export interface Config {
   // Personal information
   userEmail: string
@@ -54,12 +67,12 @@ export interface Config {
 
   // Learning preferences
   subjectAreas: SubjectArea[]
-  topics: Record<SubjectArea, string[]>
+  topics: Record<string, Record<string, TopicConfig>>; // New topics structure
   difficulty: number // 1-10
   sessionLength: number // minutes
 
   // Style preferences
-  mentorProfile: MentorProfile
+  mentorProfile: string // Use string type here for now as profile name is loaded dynamically
   emailStyle: EmailStyle
 
   // Schedule

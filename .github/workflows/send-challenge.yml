@@ -75,7 +75,7 @@ jobs:
           
           echo "should_run=$SHOULD_RUN" >> $GITHUB_OUTPUT
 
-      - name: Generate and send challenge
+      - name: Generate and send challenge or welcome
         if: steps.check-schedule.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -83,8 +83,12 @@ jobs:
         run: |
           node -e "
             import('./dist/index.js').then(async ({initialize, generateChallenge}) => {
-              await initialize();
-              await generateChallenge();
+              const profile = await initialize();
+              if (profile.completedChallenges === 0) {
+                console.log('First-time user. Welcome email sent during initialization.');
+              } else {
+                await generateChallenge();
+              }
             });
           "
 

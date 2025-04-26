@@ -1,0 +1,142 @@
+Implementation Questions
+Configuration and Setup
+
+How should we handle secrets management for the API keys (Gemini and Resend)? Should we use environment variables, GitHub Secrets, or another approach?
+What directory structure would be most intuitive for users? Should we follow any specific conventions for organizing the code?
+How should we validate user configuration in config.ts? What happens if required fields are missing?
+Should the setup process be automated, or should users manually set up directories and files?
+
+Challenge Generation
+
+What parameters should be included in prompts to Gemini API for generating challenges? How do we ensure appropriate difficulty?
+How should we generate and track challenge IDs? Should they include timestamps or other metadata?
+What format should challenges follow? Should we enforce a specific structure (e.g., Markdown with specific sections)?
+How can we ensure challenges are relevant to the user's chosen topics and skills?
+
+Submission Processing and Feedback
+
+What should the feedback structure look like? What elements should be included (strengths, weaknesses, scores)?
+How should we handle code review? Should we analyze code syntax, logic, or just rely on the AI's general evaluation?
+Should feedback include metrics or scoring? If so, what scale and criteria should be used?
+Should the system track specific skills development over time? How granular should this tracking be?
+
+Letter/Q&A System
+
+How should the letter system handle context from previous conversations? How many previous exchanges should be included?
+Should we implement any limits on letter frequency or content length?
+How should we format the mentor's responses based on the selected mentor profile? What tone differences should exist between profiles?
+
+Progress Tracking and Reporting
+
+What metrics should be included in the weekly, monthly, and quarterly reports?
+How should we visualize progress trends? What types of charts would be most valuable?
+Should the roadmap be automatically adjusted based on performance, or should it just provide recommendations?
+How detailed should the statistics tracking be? What data structure should we use for stats.json?
+
+Runtime Support (npm vs Bun)
+
+How should the system detect which runtime to use? Should it be configured or auto-detected?
+What Bun-specific optimizations should we implement? Are there any operations that benefit more from Bun's capabilities?
+How should we handle dependencies that might work differently between npm and Bun?
+
+GitHub Actions Integration
+
+How should we structure the workflows to be maintainable and avoid duplication?
+How frequently should challenges be generated for different schedule options (daily, threePerWeek, weekly)?
+Should workflows run on specific branches only, or should they apply to all branches?
+
+Please answer these questions with as much detail as you think necessary. Your responses will guide the development of our pseudocode and project structure.RetryDLIn this version API Keys will be managed via GitHub Secrets and GitHub Actions. Should we develop locally with act? GEMINI_API_KEY and RESEND_API_KEY will be required.You can decide this. I thought our info already had a pretty good idea? Good TypeScript practices for 2025?Our TypeScript and/or Action should handle this and it should fail and let the user know that there is an issue.No the idea is that they clone the repo, add the secrets and enable actions if it is needed and then it should be good to go. We should be able to manually run them to check they work too. Good docs. We have GitHub Actions workflows, config and the secrets.The challenges should be generated based on the config, the letters and reports. Maybe we need an action to go through these and process them so we have a single file (source of truth) to use for the challenges/responses. The idea is that they are all linked together. The challenges are aware of the notes/letters, the mentor should keep a profile on you. We would need a profile for the mentor and same with the reports. We need to know what kind of challenges they want, and we should have a way to decide what the most appropriate challenge would be.I don't think we have to care about this? It would be date/time and stored in the challenges directory. We might need another Action that manages an archive system. We should have a summary file for the AI to use instead of it having to read all of the challenges. That way we don't need to be caring or sharing the old stuff. The idea is that the older stuff would be pushed to the reports and kept that way. Quarterly report is like the cold storage equivalent (that is the longest this will go back). A prompt would include the profile and all of the other details along with everything we need to generate the suitable challenge/homework or whatever we decide to do.Markdown and it is sent via email. The user will respond in either Markdown, or the extension of the language. We should be able to handle the right filetypes. md, txt and ts, mjs, js, ruby, python etc. Only cover what we know we need to cover. Markdown can basically be the catch all (if I wanna do Networking or something etc).I think we might have covered this? Also config.ts should only be changed by the user. That will always be included and considered.This should be based on the mentor. An example prompt I have: only suitable for TypeScript but we could make this generic.
+"You're Linus Torvalds. Review this TypeScript function. Be brutally honest, but fair. Do not praise unnecessarily. Highlight what sucks and how to fix it. Mention performance, design, structure, naming, and anything that offends you."Just rely on the AI's evaluation and I will iterate this as I go.Yes!!! I like getting a score out of 100, and also an explanation of why that score was given and also a way to get to 100 based on my work.I think we keep a running file that the AI can read and modify. Basically the teacher's notes and what their idea of the student is. This would and could be modified by each of the actions and it would be shared between them.I would have a directory mail/ or letters/ (whatever is the best) and if I drop a file/files into the directory it will be picked up by the action, processed and the response should be sent to me via email. The files I put in there would be moved to an archive directory and the teacher/action can modify the shared, running file if it needs to be etc. It should keep track of what difficulty, next topics etc, what things should be looked at more.Letters can only run once at a time. If there is too much content in the directory it will have to be truncated and it should start with the oldest files first. If there is too much and it can't process it? We should take the oldest first and the newer stuff is just missed and the response should tell the user about this. That way the missed stuff just stays there until next time or the user can intervene.I want the mentors to attempt to be as close to the character of who they are as possible. For example, there would be Linus and I should have a mentors/ directory or something with a .ts config for each of the mentors. These would be sent with the prompt too so the AI always knows how to behave like the mentor.I'm not sure yet, but I was just gonna track what we were doing, how it is going etc and build from there.I think we can only really use simple mermaid charts here. At least start here. Markdown tables too. It will be email and markdown. I don't know if we can use mermaid in email though so we might have to placeholder that as a future idea.Yes. Actually we should have a version of the roadmap that the user controls and another suggested roadmap that is what the teacher/ai thinks we should be doing based on all of the information it has.I don't know. Start simple and small. What would we even track? Is this neccessary?It shouldn't care or be needed? We default to npm and use npm. If someone else wants to use something different? They can.as above. this isn't important. if we can only support one, we only support one etc. npm.as above.1 workflow per thing that we do. Each of them is like a layer and they all run on schedule. If the user hasn't done anything it shouldn't punish them or be annoying either. I might just be busy.This should be something we can config in config.ts? I would start with daily but if people are busy they should be able to change it. It is run on a schedule so this should be easy.No this will just work in a single, main branch.
+
+Questions about Implementation:
+
+Onboarding Experience:
+
+What specific information should be in the welcome email?
+Should there be any setup tasks for the user to complete after receiving the welcome email?
+Would you prefer the mentor to introduce themselves directly, or should it be more of a system introduction?
+
+
+Challenge Submission Workflow:
+
+How exactly should users submit their solutions? (file naming convention, location)
+Should the instructions include GitHub commands for submission or assume users know Git?
+What information is essential in the submission instructions?
+
+
+Mentor Profiles:
+
+How many mentor profiles would you like to initially support?
+For each mentor, what personality traits are most important to capture?
+Should mentors have areas of expertise (e.g., Linus for systems programming, another for web dev)?
+
+
+Configuration Approach:
+
+For the topic structure, would you prefer a flat list with tags, or a hierarchical structure?
+How should topic relationships be defined? (prerequisites, related topics, subtopics)
+Should difficulty be set per topic or globally?
+
+
+Email Formatting:
+
+Do you want HTML-rich emails with styling, or simpler text/markdown format?
+Should code examples in emails use syntax highlighting?
+Any specific branding elements you want to include in emails?
+
+
+Challenge Structure:
+
+What specific sections should every challenge have?
+How should challenge difficulty be calibrated and communicated?
+Should challenges build upon previous challenges, or be independent?
+
+
+
+Once you provide answers to these questions, I can give you a more tailored response with specific implementation guidance.DLThe intro is designed to welcome them, to explain how it works and what to expect. Obviously if they are getting the intro email they are already set up with the basics. It should tell them what it is about, what the challenges and questions will be like. Explain how sometimes it might be questions and answers, and sometimes it will be a leetcode style challenge, or it could be terraform etc (this should all be in the config as subjects and topics and we might even need some extra details?). Explain to the user that they should send the instructor a note/letter and how and to tell them how they want to learn and what they want to learn. It should tell me about my instructor and what they are like and what their expectations are. We don't support mentor profiles yet? If we need one we should start with Linus.We already know this? It is directory based and all files will be picked up when the schedule rules. The schedule for marking and looking at the work should understand what the challenge actually was too. Assume users know at least the basics of git. The just need to know where to put things. You got a dir structure?Just do Linus first and we can build around that. There should be a directory of files with the mentor profiles and our config should pick them up as long as we use the correct name. If they select one that isn't there our system should let them know and it should default to something sane (Linus is the default. Absolutely lean into what we know about the profiles and maybe even say that web dev isn't their primary thing but because they are AI of course they know it anyway etc).I don't actually know what this should look like yet. It has to be smart enough to handle what I have described. As long as it is typescript I think we're fine.Don't really care for now. Ultimately I want it to look good but I like markdown and the main thing is that it works and is effective. We can improve this part later on. It looked okay already just was a bit munted with the object/object.These might vary based on what they are? If it is a leetcode problem it would be structured like that. It could be a challenge like set up an ec2 ubuntu instance using Terraform etc and give it the terraform code, as well as the logs to show that it worked etc. It should allow them to do theory based stuff. What if I can't afford AWS etc. I should still be able to participate. They should be aware of the information if it is there (structure.md should have the info for this) but it shouldn't be the primary factor in creating a challenge. Like a teacher has an idea of a student? It should see maybe the summary of our letters, the profile the teacher keeps of the student and the details in the config we need.(╯°□°)╯︵ ┻━┻ ➜ techdeck-academy git:(main✗) tree -I "node_modules|.git|dist|build|.turbo|.next|.parcel-cache|bun.lockb|yarn.lock|package-lock.json" -L 3
+.
+├── LICENSE
+├── README.md
+├── archive
+│   ├── challenges
+│   ├── feedback
+│   ├── letters
+│   └── submissions
+├── challenges
+│   ├── summary.json
+│   └── undefined.json
+├── feedback
+├── letters
+│   ├── archive
+│   ├── from-mentor
+│   └── to-mentor
+├── package.json
+├── progress
+│   ├── cleanup-reports
+│   ├── monthly
+│   ├── quarterly
+│   ├── stats.json
+│   └── weekly
+├── questions.txt
+├── repomix-output.xml
+├── src
+│   ├── assets
+│   │   └── techdeck-academy.jpg
+│   ├── config.ts
+│   ├── index.ts
+│   ├── profiles
+│   ├── scripts
+│   ├── types.ts
+│   └── utils
+│       ├── tests
+│       ├── ai.ts
+│       ├── email.ts
+│       ├── files.ts
+│       ├── profile-manager.ts
+│       ├── stats-manager.ts
+│       └── summary-manager.ts
+├── structure.md
+├── submissions
+└── tsconfig.json
+24 directories, 20 files
+(╯°□°)╯︵ ┻━┻ ➜ techdeck-academy git:(main✗)                                                  15:16:55
