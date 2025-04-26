@@ -15,7 +15,7 @@ const LETTERS_FROM_MENTOR_DIR = path.join('letters', 'from-mentor');
 const ARCHIVE_LETTERS_TO_MENTOR_DIR = path.join('archive', 'letters', 'to-mentor');
 const ARCHIVE_LETTERS_FROM_MENTOR_DIR = path.join('archive', 'letters', 'from-mentor');
 
-async function processSingleLetter(letterPath: string, config: Config, aiMemory: string, mentor: MentorProfile): Promise<boolean> {
+async function processSingleLetter(letterPath: string, config: Config, aiMemory: string, mentor: MentorProfile, studentStatus: string): Promise<boolean> {
     console.log(`Processing letter: ${letterPath}`);
     const letterFilename = path.basename(letterPath);
     try {
@@ -28,7 +28,8 @@ async function processSingleLetter(letterPath: string, config: Config, aiMemory:
             recentCorrespondence,
             aiMemory, // Pass AI Memory string
             mentor.name, // Pass mentor name
-            config
+            config,
+            studentStatus // Pass the status
         );
 
         // --- 2. Save Mentor Response ---
@@ -113,8 +114,9 @@ async function main() {
             // if (letterFilename === 'introduction.md') { ... }
             // --- End special handling ---
 
-            // Pass aiMemory instead of profile snapshot
-            const success = await processSingleLetter(letterPath, config, aiMemory, mentorProfile);
+            // Pass aiMemory AND student status instead of profile snapshot
+            // Provide default status if somehow undefined after reading
+            const success = await processSingleLetter(letterPath, config, aiMemory, mentorProfile, studentProfile.status || 'awaiting_introduction');
             if (success) {
                 successCount++;
                 // --- Check if this was the first interaction ---

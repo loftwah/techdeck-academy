@@ -311,77 +311,74 @@ export async function generateFeedback(
   return feedback;
 }
 
-// Refactored: Uses aiMemory string instead of StudentProfile object
+// Refactored: Adds studentStatus parameter to adjust prompt for introductions
 export async function generateLetterResponsePrompt(
   question: string,
   correspondence: string[],
-  aiMemory: string, // Changed parameter
+  aiMemory: string,
   mentorProfile: MentorProfile,
-  config: Config
+  config: Config,
+  studentStatus: string // Added parameter
 ): Promise<string> {
-  const recentMessages = correspondence.slice(-5).join('\n---\n');
-
-  // Check if this is the introductory message
-  const isIntroductory = aiMemory.includes("Initial state. Waiting for first interaction.") || 
-                         question.toLowerCase().includes("to linus") && question.toLowerCase().includes("i'm dean"); // Heuristic check for the example intro
-
-  let initialInstruction = `Act as an AI mentor (${mentorProfile.name}) with the following profile:
-Style: ${mentorProfile.style}
-Tone: ${mentorProfile.tone}
-Expertise: ${mentorProfile.expertise.join(', ')}`;
-
-  // Add specific instructions for the introductory response
-  if (isIntroductory) {
-    initialInstruction += `
-
-**Special Instruction for this FIRST interaction:** This is the student's introductory letter. Respond in a welcoming manner. Acknowledge their goals positively. Set expectations according to your persona, but avoid overly harsh criticism *at this stage*. Focus on establishing the mentoring relationship and outlining the next steps.`;
-  }
-
-  // Updated prompt to inject AI Memory
-  return `${initialInstruction}
+  const basePrompt = `You are the ${mentorProfile.name} mentor (${mentorProfile.style}, ${mentorProfile.tone}). Respond to the student's letter below, using the AI Teacher's Notes for context.
 
 --- START AI TEACHER'S NOTES ---
 ${aiMemory}
 --- END AI TEACHER'S NOTES ---
 
-A student has sent the following question/letter:
----
-${question}
----
-
 Recent Correspondence (if any):
----
-${recentMessages || 'No recent messages'}
----
+${correspondence.join('\n---\n')}
 
-Please provide a helpful and supportive response in the mentor's style and preferred email style (${config.emailStyle}). Address the student's question/introduction directly, using the AI Teacher's Notes for context about their progress and potential struggles. Also, analyze the student's letter for **new** insights (compared to the existing notes) into their understanding, challenges, and mindset.
+Student's Latest Letter:
+"${question}"
+`;
 
-Format your response as a JSON object matching the LetterResponse interface:
-{
-  "content": "<Your detailed response to the student's question, formatted in markdown>",
-  "insights": {
-    "strengths": ["<Newly identified strength 1>"], // Optional: Strengths observed *specifically* from this letter
-    "weaknesses": ["<Newly identified weakness 1>"], // Optional: Weaknesses or confusion points observed *specifically* from this letter
-    "topics": ["<Relevant topic 1>"], // Optional: Topics mentioned or implied *in this letter*
-    "sentiment": "<positive|negative|neutral>", // Optional: Overall sentiment *of this letter*
-    "skillLevelAdjustment": <number>, // Optional: Suggested micro-adjustment to skill level *based on this letter*
-    "flags": ["<flag1>"] // Optional: Flags like 'confused', 'motivated' *based on this letter*
+  let instructions = '';
+  if (studentStatus === 'awaiting_introduction') {
+    // Specific instructions for the *first* interaction / introduction letter
+    instructions = `
+Instructions:
+1.  Acknowledge this is the student's introduction/first letter.
+2.  Adopt your ${mentorProfile.name} persona (${mentorProfile.style}, ${mentorProfile.tone}) to provide a welcoming but character-appropriate response.
+3.  Briefly acknowledge the student's stated goals or background from their letter.
+4.  **Critically Important:** DO NOT assign technical tasks, request code examples, or give foundational exercises in this initial response. Mention that formal challenges will follow separately based on their configuration.
+5.  Keep the response concise and encouraging in your persona's style.
+6.  Generate insights based *only* on the content of THIS letter (sentiment, mentioned topics, flags like 'introduction').
+`;
+  } else {
+    // Standard instructions for subsequent letters
+    instructions = `
+Instructions:
+1.  Respond to the student's questions or comments in your ${mentorProfile.name} persona (${mentorProfile.style}, ${mentorProfile.tone}).
+2.  Use the AI Teacher's Notes and recent correspondence for context.
+3.  Provide clear answers or guidance.
+4.  Generate relevant insights based on the conversation (sentiment, topics, strengths, weaknesses, flags).
+`;
   }
+
+  return `${basePrompt}
+${instructions}
+Format the response as a JSON LetterResponse object with fields: content (string, your response to the student), insights (LetterInsights object with optional fields: sentiment, strengths, weaknesses, topics, skillLevelAdjustment, flags).`;
 }
 
-Ensure the 'content' field is markdown formatted. The 'insights' should reflect *new observations* from this specific interaction.`;
-}
-
-// Refactored: Uses aiMemory string instead of StudentProfile object
+// Refactored: Adds studentStatus parameter
 export async function generateLetterResponse(
   question: string,
   correspondence: string[],
-  aiMemory: string, // Changed parameter
-  mentorProfileName: string, // Changed from profile object to name
-  config: Config
+  aiMemory: string, 
+  mentorProfileName: string,
+  config: Config,
+  studentStatus: string // Added parameter
 ): Promise<LetterResponse> {
-  const mentorProfile = await profile.loadMentorProfile(mentorProfileName); // Load mentor profile
-  const prompt = await generateLetterResponsePrompt(question, correspondence, aiMemory, mentorProfile, config); // Pass aiMemory
+  const mentorProfile = await profile.loadMentorProfile(mentorProfileName);
+  const prompt = await generateLetterResponsePrompt(
+    question,
+    correspondence,
+    aiMemory,
+    mentorProfile,
+    config,
+    studentStatus // Pass status down
+  );
   const result = await model.generateContent(prompt);
   const response = await result.response;
   const text = response.text();

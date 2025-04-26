@@ -44,6 +44,15 @@ async function initialize(): Promise<StudentProfile> {
 
 // Generate and send a new challenge
 async function generateChallenge(): Promise<void> {
+  // Check if there are existing challenges
+  const existingChallenges = await files.listChallenges();
+  if (existingChallenges.length > 0) {
+    console.log(`Skipping challenge generation: ${existingChallenges.length} existing challenge(s) found in challenges/.`);
+    return; // Exit if challenges already exist
+  }
+
+  // Proceed with generation if no challenges exist
+  console.log('No existing challenges found. Proceeding with generation...');
   const context = await summary.getContextForAI('challenge')
   const recentChallenges = (context as any).recentChallenges || []
   const aiMemory = await readAIMemoryRaw()
