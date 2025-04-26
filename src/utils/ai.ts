@@ -125,20 +125,24 @@ export async function generateChallengePrompt(
   console.log(`Selected challenge type: ${selectedType}`);
 
   const contextSections: PromptSection[] = [
-    { title: 'AI Teacher Notes', content: aiMemory, markdownFormat: 'notes' },
     { 
         title: 'Student Preferences & Configuration', 
-        content: `Configured Topics & Levels: ${JSON.stringify(config.topics)}\nAll Available Topics: ${allTopics.join(', ')}\nPreferred Difficulty: ${config.difficulty}/10\nRecent Challenge Topics (Avoid direct repeats): ${recentChallenges.map(c => c.topics).flat().join(', ') || 'No recent challenges'}\nPreferred Challenge Types: ${availableTypes.join(', ')}`
-    }
+        content: `Configured Topics & Levels: ${JSON.stringify(config.topics)}
+All Available Topics: ${allTopics.join(', ')}
+Preferred Difficulty: ${config.difficulty}/10
+Recent Challenge Topics (Avoid direct repeats): ${recentChallenges.map(c => c.topics).flat().join(', ') || 'No recent challenges'}
+Preferred Challenge Types: ${availableTypes.join(', ')}`
+    },
+    { title: 'AI Teacher Notes', content: aiMemory, markdownFormat: 'notes' }
   ];
 
   const instructions = [
     `Base the challenge on the student's progress documented in the Teacher's Notes and their preferences, considering the configured topics and their levels.`, // General instruction first
     `Generate a challenge of type: **${selectedType}**.`,
     `Ensure difficulty aligns with student notes and preferred difficulty (${config.difficulty}/10).`,
+    `Ensure the selected Topics are relevant and logically connected. For higher difficulty levels, aim for challenges that integrate multiple concepts or require more in-depth solutions.`,
     `Address weaknesses and build on strengths identified in the AI Teacher Notes.`,
     `Avoid directly repeating recent challenge topics.`,
-    `Fill optional fields (hints, requirements, examples) only if appropriate for the selected type **${selectedType}**.`
   ];
 
   // Add type-specific reminders to instructions
@@ -146,34 +150,36 @@ export async function generateChallengePrompt(
     case 'coding': instructions.push(`Reminder for 'coding': Focus on problem statement, requirements, examples.`); break;
     case 'iac': instructions.push(`Reminder for 'iac': Focus on task description, resources, example outputs.`); break;
     case 'question': instructions.push(`Reminder for 'question': Focus on clear question in description; requirements/examples likely empty.`); break;
-    case 'mcq': instructions.push(`Reminder for 'mcq': Question in description, options in examples.`); break;
+    case 'mcq': instructions.push(`Reminder for 'mcq': Question in description, options using standard Markdown list format under an '## Options' heading.`); break;
     case 'design': instructions.push(`Reminder for 'design': Scenario in description, constraints/focus in requirements.`); break;
     case 'casestudy': instructions.push(`Reminder for 'casestudy': Case study in description, questions in requirements.`); break;
     case 'project': instructions.push(`Reminder for 'project': Project outline in description, steps in requirements.`); break;
     default: instructions.push(`Reminder for default: Generate a standard coding challenge.`);
   }
 
-  // REVISED: Request Markdown output ONLY for AI-generated content fields.
-  const outputFormatDescription = `Respond using Markdown. Use the following headings EXACTLY, including the double hash marks and the field name, followed by the content on the next line(s). Omit optional headings if not applicable:
-## Title
-[Challenge Title Here]
+  // REVISED: Request specific H1/H2, flexible Markdown for optional sections.
+  const outputFormatDescription = `Respond using Markdown. Use the following structure EXACTLY:
+# [Challenge Title Here]
+(The H1 heading above IS the title)
+
 ## Description
 [Detailed Challenge Description Here]
+
 ## Topics
 [Comma-separated List of Relevant Topics Here]
-## Requirements (Optional)
-+- [Requirement 1]
-+- [Requirement 2]
-+...
-## Examples (Optional)
-+- [Example 1 or MCQ Option 1]
-+- [Example 2 or MCQ Option 2]
-+...
-## Hints (Optional)
-+- [Hint 1]
-+- [Hint 2]
-+...
-DO NOT include headings or fields for 'id', 'type', 'difficulty', or 'createdAt'. These are handled by the application.`;
+
+(Optional Sections Below - Include ONLY if meaningful and relevant to the challenge type)
+## Requirements 
+[Use standard Markdown lists (* or -) or paragraphs]
+
+## Examples 
+[Use standard Markdown lists (* or -) or paragraphs. For MCQ type, use this section OR ## Options for the choices.]
+
+## Hints 
+[Use standard Markdown lists (* or -) or paragraphs]
+
+Use standard Markdown for all content (paragraphs, lists, code blocks etc.). 
+ONLY include the optional sections (Requirements, Examples, Hints) if they add value.`;
 
   return buildPrompt(
       null, // No specific mentor persona for challenge generation
@@ -288,51 +294,82 @@ export async function generateChallenge(
     }
   console.log('Raw AI response:\n', text); // Keep raw response log
 
-  // --- START NEW MARKDOWN PARSING LOGIC ---
+  // --- START REVISED MARKDOWN PARSING LOGIC ---
 
   const parsedData: Partial<Challenge> = {};
 
-  // Helper function to extract content under a heading
-  const extractContent = (heading: string): string | null => {
-    // Match heading exactly, allowing for optional trailing whitespace
-    // Capture content until the next heading or end of string
+  // Helper function to extract content under a specific H2 heading
+  const extractH2Content = (heading: string): string | null => {
+    // Match H2 heading exactly, allowing for optional trailing whitespace
+    // Capture content until the next H2/H1 heading or end of string
     // Dotall (s) flag allows '.' to match newlines
-    const regex = new RegExp(`^## ${heading}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, "im");
+    const regex = new RegExp(`^## ${heading}\s*\n([\s\S]*?)(?=\n(?:## |# )|$)`, "im"); // Look for next ## or #
     const match = text.match(regex);
     return match && match[1] ? match[1].trim() : null;
   };
-  
-  // Helper function to parse bulleted lists
+
+  // Helper function to parse bulleted lists (accepts * or -)
   const parseList = (content: string | null): string[] => {
       if (!content) return [];
-      // Match lines starting with '-' or '*' (allowing leading whitespace)
+      // Match lines starting with * or - (allowing leading whitespace)
       // Capture the text after the bullet and trim it
-      return content.split('\\n')
-          .map(line => line.match(/^\\s*[-*]\\s*(.*)/))
-          .filter(match => match !== null)
+      return content.split('\n')
+          .map(line => line.match(/^\s*[-*]\s*(.*)/))
+          .filter(match => !!match) // Ensure match is not null
           .map(match => match![1].trim());
   };
 
-  // Extract mandatory fields that come from AI
-  parsedData.title = extractContent('Title') ?? undefined; // Assign undefined if null
-  parsedData.description = extractContent('Description') ?? undefined;
-  const topicsStr = extractContent('Topics');
+  // --- Extract Title (H1) --- 
+  let titleMatch = text.match(/^#\s+(.*?)(\n|$)/im); // Find first H1
+  parsedData.title = titleMatch && titleMatch[1] ? titleMatch[1].trim() : undefined;
+
+  // --- Extract Description (H2) --- 
+  parsedData.description = extractH2Content('Description') ?? undefined;
+  // Fallback: If Description H2 not found, try finding the first H2 after the title
+  if (!parsedData.description && parsedData.title) {
+      const titleEndIndex = text.indexOf(parsedData.title) + parsedData.title.length;
+      const textAfterTitle = text.substring(titleEndIndex);
+      // Find the first H2 in the remaining text
+      const firstH2Match = textAfterTitle.match(/^##\s+.*?\n([\s\S]*?)(?=\n(?:## |# )|$)/im);
+      if (firstH2Match && firstH2Match[1]) {
+          // Basic heuristic: If an H2 exists soon after H1, assume it's the description
+          // We might need more robust logic if the structure varies wildly
+          console.warn("Could not find '## Description'. Using content of the first H2 found after the title as description.");
+          parsedData.description = firstH2Match[1].trim(); 
+      }
+  }
+  // Fallback 2: If still no description, maybe grab text between H1 and next H2/H1?
+  if (!parsedData.description && titleMatch) {
+      const titleStartIndex = titleMatch.index ?? 0;
+      const titleEndIndex = titleStartIndex + titleMatch[0].length;
+      const nextHeadingMatch = text.substring(titleEndIndex).match(/\n(?:## |# )/);
+      const endOfDescription = nextHeadingMatch ? titleEndIndex + (nextHeadingMatch.index ?? 0) : text.length;
+      const potentialDescription = text.substring(titleEndIndex, endOfDescription).trim();
+      if (potentialDescription) {
+          console.warn("Could not find '## Description' or subsequent H2. Using text between H1 and next heading as description.");
+          parsedData.description = potentialDescription;
+      }
+  }
+
+  // --- Extract Topics (H2) --- 
+  const topicsStr = extractH2Content('Topics');
   parsedData.topics = topicsStr ? topicsStr.split(',').map(t => t.trim()).filter(t => t) : [];
 
-  // Extract optional fields (use parseList for arrays)
-  parsedData.requirements = parseList(extractContent('Requirements'));
-  parsedData.examples = parseList(extractContent('Examples'));
-  parsedData.hints = parseList(extractContent('Hints'));
+  // --- Extract Optional Sections (H2) --- 
+  parsedData.requirements = parseList(extractH2Content('Requirements'));
+  // Allow 'Options' as an alternative heading for MCQ examples
+  const examplesContent = extractH2Content('Examples') ?? extractH2Content('Options');
+  parsedData.examples = parseList(examplesContent);
+  parsedData.hints = parseList(extractH2Content('Hints'));
   
-  // Check if essential fields *parsed from AI* were extracted
-  if (!parsedData.title || !parsedData.description) { // Only check Title and Description from AI
-      console.error("Failed to parse essential Title or Description from AI Markdown response:", parsedData);
-      // Optionally, try to extract SOMEthing or just fail
-      // For now, let's throw a specific error
+  // Check if essential fields were extracted (after fallbacks)
+  if (!parsedData.title || !parsedData.description) { 
+      console.error("Failed to parse essential Title (H1) or Description (H2/Fallback) from AI Markdown response:", parsedData);
+      console.error("Raw AI response was:\n", text); // Log raw text on error
       throw new Error(`Failed to parse essential fields (Title, Description) from AI's Markdown response. Check the raw AI response log.`);
   }
 
-  // --- END NEW MARKDOWN PARSING LOGIC ---
+  // --- END REVISED MARKDOWN PARSING LOGIC ---
 
   // Now we have parsedData (from Markdown), proceed to augment and validate
   
