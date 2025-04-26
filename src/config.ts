@@ -57,7 +57,6 @@ export const config: Config = {
   // Schedule
   schedule: {
     challengeFrequency: 'threePerWeek',
-    digestFrequency: 'weekly'
   },
 
   // Archive settings

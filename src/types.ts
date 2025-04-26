@@ -79,7 +79,6 @@ export interface Config {
   // Schedule
   schedule: {
     challengeFrequency: Schedule
-    digestFrequency: 'weekly' | 'monthly' | 'quarterly'
   }
 
   // Archive settings
