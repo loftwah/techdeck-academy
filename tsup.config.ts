@@ -9,6 +9,7 @@ export default defineConfig({
   sourcemap: true, // Generate source maps
   clean: true, // Clean the output directory before build
   publicDir: 'src/email-templates', // Copy this directory to dist/email-templates
+  noExternal: ['handlebars'], // Force bundling of handlebars
   // Note: If you have other assets (like images), you might need a more complex 
   // asset handling strategy (e.g., using the 'copy' plugin or separate copy commands 
   // if publicDir isn't sufficient)

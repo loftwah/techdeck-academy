@@ -8,7 +8,7 @@ import type {
   Challenge, 
   Feedback, 
   EmailStyle, 
-  Config,
+  Config, 
   MentorProfile,
   LetterResponse
 } from '../types.js'
@@ -41,8 +41,33 @@ async function loadAndCompileTemplate(templateName: string): Promise<handlebars.
     return templateCache[templateName];
   }
 
-  // Resolve path relative to the current file's directory
-  const templatePath = path.resolve(__dirname, './email-templates', `${templateName}.hbs`);
+  // Construct path based on GITHUB_WORKSPACE, relative to project root in container
+  const workspaceDir = process.env.GITHUB_WORKSPACE;
+  if (!workspaceDir) {
+    // Fallback or error handling if GITHUB_WORKSPACE is not set (e.g., local dev)
+    // For now, let's throw an error, but you might want a different fallback.
+    console.error('GITHUB_WORKSPACE environment variable is not set.');
+    // Attempting previous method as a fallback (might work in local dev)
+    try {
+      const fallbackFilename = fileURLToPath(import.meta.url);
+      const fallbackDirname = path.dirname(fallbackFilename);
+      const fallbackPath = path.resolve(fallbackDirname, '../email-templates', `${templateName}.hbs`);
+      console.log(`Attempting fallback template path: ${fallbackPath}`);
+      const templateSource = await fs.readFile(fallbackPath, 'utf-8');
+      const compiledTemplate = handlebars.compile(templateSource);
+      templateCache[templateName] = compiledTemplate; // Cache the compiled template
+      return compiledTemplate;
+    } catch (fallbackError) {
+       console.error('Fallback template loading failed:', fallbackError);
+       throw new Error('Could not determine template path. GITHUB_WORKSPACE not set and fallback failed.');
+    }
+  }
+  
+  // Adjust templateDir to point directly to dist, as publicDir copies files there
+  const templateDir = path.join(workspaceDir, 'dist'); 
+  const templatePath = path.join(templateDir, `${templateName}.hbs`);
+  console.log(`Attempting to load template from: ${templatePath}`); // Add logging
+
   try {
     const templateSource = await fs.readFile(templatePath, 'utf-8');
     const compiledTemplate = handlebars.compile(templateSource);
