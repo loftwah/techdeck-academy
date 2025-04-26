@@ -7,7 +7,8 @@ import { StudentProfileSchema } from '../schemas.js'
 import { ZodError } from 'zod'
 import { readJsonFileWithSchema, writeJsonFileWithSchema, FileNotFoundError, FileParsingError, FileValidationError, FileWriteError } from './file-operations.js'
 
-const PROFILE_FILE = 'student-profile.json'
+// Use path.resolve to ensure the path is absolute from the project root
+const PROFILE_FILE = path.resolve(process.cwd(), 'student-profile.json');
 
 // Default profile structure
 const DEFAULT_PROFILE: StudentProfile = {
