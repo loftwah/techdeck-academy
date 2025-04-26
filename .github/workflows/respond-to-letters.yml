@@ -81,18 +81,19 @@ jobs:
           fi
 
       - name: Process letters if any found
+        id: process_letters
         if: steps.find_letters.outputs.files != ''
         run: |
           echo "Processing letters: ${{ steps.find_letters.outputs.files }}"
-          # Pass the found file paths to the compiled script
-          node dist/scripts/process-letters.js ${{ steps.find_letters.outputs.files }}
+          # Assume the script returns non-zero on error, or we can modify it later
+          node dist/scripts/process-letters.js ${{ steps.find_letters.outputs.files }} && echo "processed=true" >> $GITHUB_OUTPUT
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           # Ensure NODE_ENV or other relevant env vars are set if needed by config/scripts
 
       - name: Commit response and updated profile
-        if: success() && steps.find-letters.outputs.letters_processed == 'true'
+        if: success() && steps.process_letters.outputs.processed == 'true'
         run: |
           git config --local user.email "academy@techdeck.life"
           git config --local user.name "TechDeck Academy Bot"
