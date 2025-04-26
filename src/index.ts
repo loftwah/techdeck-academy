@@ -51,7 +51,7 @@ async function generateChallenge(): Promise<void> {
   // Proceed with generation if no challenges exist
   console.log('No existing challenges found. Proceeding with generation...');
   const context = await summary.getContextForAI('challenge')
-  const recentChallenges = (context as any).recentChallenges || []
+  const recentChallenges = (context as any).recentChallenges ?? []
   const aiMemory = await readAIMemoryRaw()
 
   // Generate the challenge

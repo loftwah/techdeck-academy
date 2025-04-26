@@ -81,8 +81,8 @@ export async function loadOrCreateAndSyncProfile(config: Config): Promise<Studen
         const initialStatus = config.introductionSubmitted ? 'active' : 'awaiting_introduction';
 
         studentProfile = {
-            userId: config.githubUsername || 'default-user',
-            name: config.githubUsername || 'Default User',
+            userId: config.githubUsername ?? 'default-user',
+            name: config.githubUsername ?? 'Default User',
             completedChallenges: 0,
             currentSkillLevel: config.difficulty,
             lastUpdated: now,
@@ -132,7 +132,7 @@ export async function loadOrCreateAndSyncProfile(config: Config): Promise<Studen
             studentProfile.userId = config.githubUsername;
             needsSync = true;
         }
-        const expectedName = config.githubUsername || 'Default User';
+        const expectedName = config.githubUsername ?? 'Default User';
         if (studentProfile.name !== expectedName) {
             console.log(`Sync: Updating profile name to '${expectedName}'.`);
             studentProfile.name = expectedName;

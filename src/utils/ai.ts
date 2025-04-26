@@ -198,65 +198,35 @@ export async function generateChallengePrompt(
   console.log(`Selected challenge type: ${selectedType}`);
 
   const contextSections: PromptSection[] = [
-    { 
-        title: 'Student Preferences & Configuration', 
-        content: `Configured Topics & Levels: ${JSON.stringify(config.topics)}
-All Available Topics: ${allTopics.join(', ')}
-Preferred Difficulty: ${config.difficulty}/10
-Recent Challenge Topics (Avoid direct repeats): ${recentChallenges.map(c => c.topics).flat().join(', ') || 'No recent challenges'}
-Preferred Challenge Types: ${availableTypes.join(', ')}`
-    },
-    { title: 'AI Teacher Notes', content: aiMemory, markdownFormat: 'notes' }
+      { title: 'AI Teacher Notes', content: aiMemory, markdownFormat: 'notes' }, // Include AI memory
+      { title: 'Recent Challenge Topics (Avoid direct repeats)', content: recentChallenges.map(c => c.topics).flat().join(', ') || 'No recent challenges' }
   ];
 
   const instructions = [
-    `Base the challenge on the student's progress documented in the Teacher's Notes and their preferences, considering the configured topics and their levels.`, // General instruction first
-    `Generate a challenge of type: **${selectedType}**.`,
-    `Ensure difficulty aligns with student notes and preferred difficulty (${config.difficulty}/10).`,
-    `Ensure the selected Topics are relevant and logically connected. For higher difficulty levels, aim for challenges that integrate multiple concepts or require more in-depth solutions.`,
-    `Address weaknesses and build on strengths identified in the AI Teacher Notes.`,
-    `Avoid directly repeating recent challenge topics.`,
+      `Generate a ${selectedType} challenge suitable for difficulty level ${config.difficulty}/10.`,
+      `Focus on one or more of these topics if appropriate, but prioritize variety based on recent challenges and AI notes: ${allTopics.join(', ')}.`,
+      `Tailor the complexity and requirements to the specified difficulty level.`,
+      `Include clear requirements, examples (or options for MCQ), and optional hints.`,
+      `Ensure the challenge is self-contained and solvable with the provided information.`
   ];
 
-  // Add type-specific reminders to instructions
-  switch (selectedType) {
-    case 'coding': instructions.push(`Reminder for 'coding': Focus on problem statement, requirements, examples.`); break;
-    case 'iac': instructions.push(`Reminder for 'iac': Focus on task description, resources, example outputs.`); break;
-    case 'question': instructions.push(`Reminder for 'question': Focus on clear question in description; requirements/examples likely empty.`); break;
-    case 'mcq': instructions.push(`Reminder for 'mcq': Question in description, options using standard Markdown list format under an '## Options' heading.`); break;
-    case 'design': instructions.push(`Reminder for 'design': Scenario in description, constraints/focus in requirements.`); break;
-    case 'casestudy': instructions.push(`Reminder for 'casestudy': Case study in description, questions in requirements.`); break;
-    case 'project': instructions.push(`Reminder for 'project': Project outline in description, steps in requirements.`); break;
-    default: instructions.push(`Reminder for default: Generate a standard coding challenge.`);
-  }
-
-  // REVISED: Request specific H1/H2, flexible Markdown for optional sections.
-  const outputFormatDescription = `Respond using Markdown. Use the following structure EXACTLY:
-# [Challenge Title Here]
-(The H1 heading above IS the title)
-
-## Description
-[Detailed Challenge Description Here]
-
-## Topics
-[Comma-separated List of Relevant Topics Here]
-
-(Optional Sections Below - Include ONLY if meaningful and relevant to the challenge type)
-## Requirements 
-[Use standard Markdown lists (* or -) or paragraphs]
-
-## Examples 
-[Use standard Markdown lists (* or -) or paragraphs. For MCQ type, use this section OR ## Options for the choices.]
-
-## Hints 
-[Use standard Markdown lists (* or -) or paragraphs]
-
-Use standard Markdown for all content (paragraphs, lists, code blocks etc.). 
-ONLY include the optional sections (Requirements, Examples, Hints) if they add value.`;
+  // Define the expected JSON output structure based on ZodChallengeSchema fields
+  const outputFormatDescription = `Format the response as a single JSON object matching this structure: 
+{
+  "title": "string (Concise title)",
+  "description": "string (Detailed description/question)",
+  "type": "${selectedType}" | "coding" | "mcq" | "short_answer" | "iac" | "debugging", // Explicitly include selected type
+  "requirements": "string[] | null (List of requirements/context)",
+  "examples": "string[] | null (Illustrative examples/options)",
+  "hints": "string[] | null (Optional hints)",
+  "difficulty": "number (1-10, matching requested difficulty: ${config.difficulty})",
+  "topics": "string[] (List of relevant technical topics covered)"
+}
+Respond ONLY with this JSON object. Do not include any other text or markdown formatting. Ensure keys and values match the types specified (use null for optional missing fields).`;
 
   return buildPrompt(
-      null, // No specific mentor persona for challenge generation
-      `Generate a ${selectedType} challenge.`, // Task Description
+      null, // No specific persona needed for challenge generation
+      `Generate a new technical challenge.`, // Task Description
       contextSections,
       instructions,
       outputFormatDescription
@@ -281,36 +251,30 @@ export async function generateFeedbackPrompt(
   ];
 
   const instructions = [
-      `Review the student submission based on the challenge details and the student's history in the AI Teacher Notes.`,
-      `Provide key strengths of the implementation in relation to the student's progress.`,
-      `Identify areas for improvement, considering patterns noted in the memory.`,
-      `Give specific suggestions for better approaches or refinements.`,
-      `Provide a numerical score out of 100 and justify it within your response text.`,
-      `Recommend concrete next steps for improvement, relevant to the student's history.`,
-      `Based on the AI Teacher Notes and this submission, consider if the student might benefit from adjusting their configured difficulty or topic levels in config.ts. If so, gently suggest they review their configuration.`
+    `Adopt your ${mentorProfile.name} persona (${mentorProfile.style}, ${mentorProfile.tone}).`,
+    `Analyze the student\'s submission for the given challenge.`,
+    `Compare the submission against the challenge description and requirements.`,
+    `Identify specific strengths and weaknesses in the student\'s approach, code, or understanding.`,
+    `Provide constructive, actionable suggestions for improvement.`,
+    `Suggest a logical next step or focus area (Improvement Path).`
   ];
 
-  // REVISED: Request Markdown output ONLY for qualitative feedback fields.
-  const outputFormatDescription = `Respond using Markdown. Use the following headings EXACTLY, including the double hash marks and the field name, followed by the content on the next line(s). Use bullet points for lists under headings. Include your score justification naturally within the text under the appropriate headings.
-## Strengths
-+- [Strength 1]
-+- ...
-## Weaknesses
-+- [Weakness 1]
-+- ...
-## Suggestions
-+- [Suggestion 1]
-+- ...
-## Improvement Path
-+[Recommended next steps or focus areas]
-DO NOT include headings or fields for 'submissionId' or 'createdAt'. These are handled by the application.`;
+  // Define the expected JSON output structure based on ZodFeedbackSchema fields
+  const outputFormatDescription = `Format the response as a single JSON object matching this structure:
+{
+  "strengths": "string[] (List of specific positive aspects)",
+  "weaknesses": "string[] (List of specific areas for improvement)",
+  "suggestions": "string[] (Actionable steps the student can take)",
+  "improvementPath": "string (A brief suggestion for the student\'s next focus)"
+}
+Respond ONLY with this JSON object. Do not include any other text or markdown formatting.`;
 
   return buildPrompt(
-      mentorProfile, // Pass the mentor persona
-      `Provide feedback on a student submission.`, // Task Description
-      contextSections,
-      instructions,
-      outputFormatDescription
+    mentorProfile,
+    `Provide feedback on a student\'s challenge submission.`, // Task Description
+    contextSections,
+    instructions,
+    outputFormatDescription
   );
 }
 
@@ -322,67 +286,63 @@ export async function generateChallenge(
 ): Promise<Challenge> {
   const prompt = await generateChallengePrompt(config, aiMemory, recentChallenges);
   
-  console.log('Generating challenge (expecting Markdown response)...');
+  console.log('Generating challenge (expecting JSON response)...');
 
   // Use the retry utility function
   const result = await callGenerativeAIWithRetry('generateChallenge', prompt);
 
   const responseText = result.response.text();
-  console.log('Raw AI Response (Challenge):\n', responseText);
+  console.log('Raw AI Response (Challenge JSON):\n', responseText);
 
-  // --- Markdown Parsing --- 
-  // Remove duplicate definitions of parsing helpers
-  // const extractH1Content = ... (removed)
-  // const extractH2Content = ... (removed)
-  // const parseList = ... (removed)
-  // const parseCommaSeparated = ... (removed)
-
-  // Extract data from Markdown using common helpers
-  const title = extractH1Content(responseText);
-  const description = extractH2Content(responseText, 'Description');
-  const topicsRaw = extractH2Content(responseText, 'Topics');
-  const requirementsRaw = extractH2Content(responseText, 'Requirements');
-  const examplesRaw = extractH2Content(responseText, 'Examples');
-  const hintsRaw = extractH2Content(responseText, 'Hints');
-  const optionsRaw = extractH2Content(responseText, 'Options'); // For MCQ
-
-  // Basic validation: Title and Description are essential
-  if (!title || !description || !topicsRaw) {
-    console.error('Failed to parse essential fields (Title, Description, Topics) from AI response:', responseText);
-    throw new Error('Failed to parse essential challenge fields from AI response.');
+  // --- JSON Parsing --- 
+  let challengeJson: any;
+  try {
+    // Attempt to parse the entire response as JSON
+    challengeJson = JSON.parse(responseText);
+  } catch (jsonError) {
+    console.error('Failed to parse AI response as JSON:', jsonError);
+    console.error('Raw response was:', responseText);
+    // Attempt to extract JSON from potential markdown code blocks
+    const codeBlockMatch = responseText.match(/```(?:json)?\n([\s\S]*?)\n```/);
+    if (codeBlockMatch && codeBlockMatch[1]) {
+        try {
+            console.log('Attempting to parse JSON from code block...');
+            challengeJson = JSON.parse(codeBlockMatch[1]);
+        } catch (codeBlockJsonError) {
+            console.error('Failed to parse JSON even from code block:', codeBlockJsonError);
+            throw new Error('AI response was not valid JSON, even within a code block.');
+        }
+    } else {
+        throw new Error('AI response was not valid JSON and no JSON code block was found.');
+    }
   }
 
-  // Construct the Challenge object
-  const challengeData: Partial<Challenge> = {
-    id: `CC-${Date.now()}`, // Simple ID generation
-    title: title,
-    description: description,
-    topics: parseCommaSeparated(topicsRaw),
-    requirements: parseList(requirementsRaw),
-    // Combine Examples and Options parsing, preferring Options if present (for MCQ)
-    examples: parseList(optionsRaw || examplesRaw),
-    hints: parseList(hintsRaw),
-    difficulty: config.difficulty, // Use requested difficulty
-    createdAt: new Date().toISOString(),
-    type: 'coding' // Placeholder - TODO: Determine type based on prompt/response?
+  // Add missing fields required by the Challenge type but maybe not by the AI
+  const challengeDataWithDefaults = {
+    ...challengeJson,
+    id: `CC-${Date.now()}`, // Generate ID locally
+    createdAt: new Date().toISOString(), // Generate timestamp locally
+    // Ensure requirements, examples, hints are arrays or null, default to [] if undefined
+    requirements: challengeJson.requirements ?? null,
+    examples: challengeJson.examples ?? null,
+    hints: challengeJson.hints ?? null,
+    // Ensure type is present, default if necessary (though prompt requested it)
+    type: challengeJson.type || 'coding', 
+    // Ensure difficulty is present, default if necessary (though prompt requested it)
+    difficulty: challengeJson.difficulty ?? config.difficulty, 
   };
   
-  // Determine type based on prompt or content - IMPROVED HEURISTIC
-  const selectedTypeMatch = prompt.match(/Generate a (\w+) challenge/i);
-  const inferredType = selectedTypeMatch ? selectedTypeMatch[1].toLowerCase() as ChallengeType : 'coding';
-  challengeData.type = inferredType;
-  console.log(`Inferred challenge type: ${inferredType}`);
-
   // Validate the constructed object using Zod schema
   try {
-    const validatedChallenge = ZodChallengeSchema.parse(challengeData);
+    // Use parse, which throws on error
+    const validatedChallenge = ZodChallengeSchema.parse(challengeDataWithDefaults);
     console.log(`Generated and validated challenge: ${validatedChallenge.id}`);
     return validatedChallenge;
   } catch (error) {
     // Add check for ZodError here
     if (error instanceof ZodError) {
       console.error('Generated challenge data failed validation:', error.errors);
-      console.error('Data that failed validation:', challengeData);
+      console.error('Data that failed validation:', challengeDataWithDefaults);
     } else if (error instanceof Error) { // Handle other errors
       console.error('An unexpected error occurred during challenge validation:', error.message);
     } else {
@@ -403,41 +363,52 @@ export async function generateFeedback(
   const mentorProfile = await profile.loadMentorProfile(mentorProfileName);
   const prompt = await generateFeedbackPrompt(challenge, submission, aiMemory, mentorProfile);
 
-  console.log('Generating feedback (expecting Markdown response)...');
+  console.log('Generating feedback (expecting JSON response)...');
 
   // Use the retry utility function
   const result = await callGenerativeAIWithRetry('generateFeedback', prompt);
 
   const responseText = result.response.text();
-  console.log('Raw AI Response (Feedback):\n', responseText);
+  console.log('Raw AI Response (Feedback JSON):\n', responseText);
 
-  // --- Markdown Parsing --- 
-  // Remove duplicate definitions of parsing helpers
-  // const extractContent = ... (removed - now use extractH2Content)
-  // const parseList = ... (removed)
+  // --- JSON Parsing --- 
+  let feedbackJson: any;
+  try {
+    // Attempt to parse the entire response as JSON
+    feedbackJson = JSON.parse(responseText);
+  } catch (jsonError) {
+    console.error('Failed to parse AI response as JSON:', jsonError);
+    console.error('Raw response was:', responseText);
+    // Attempt to extract JSON from potential markdown code blocks
+    const codeBlockMatch = responseText.match(/```(?:json)?\n([\s\S]*?)\n```/);
+    if (codeBlockMatch && codeBlockMatch[1]) {
+        try {
+            console.log('Attempting to parse JSON from code block...');
+            feedbackJson = JSON.parse(codeBlockMatch[1]);
+        } catch (codeBlockJsonError) {
+            console.error('Failed to parse JSON even from code block:', codeBlockJsonError);
+            throw new Error('AI response was not valid JSON, even within a code block.');
+        }
+    } else {
+        throw new Error('AI response was not valid JSON and no JSON code block was found.');
+    }
+  }
 
-  // Extract data from Markdown using common helpers
-  const strengthsRaw = extractH2Content(responseText, 'Strengths');
-  const weaknessesRaw = extractH2Content(responseText, 'Weaknesses');
-  const suggestionsRaw = extractH2Content(responseText, 'Suggestions');
-  const improvementPathRaw = extractH2Content(responseText, 'Improvement Path');
-
-  // Construct the Feedback object
-  const feedbackData: Partial<Feedback> = {
-    // submissionId is derived from the input submission object or context
-    // We need the original submissionId (challengeId-timestamp) 
-    // This function currently lacks access to it. 
-    // TODO: Pass submissionId to generateFeedback or retrieve it differently.
-    submissionId: `${submission.challengeId}-placeholder`, // TEMPORARY PLACEHOLDER
-    strengths: parseList(strengthsRaw),
-    weaknesses: parseList(weaknessesRaw),
-    suggestions: parseList(suggestionsRaw),
-    improvementPath: improvementPathRaw ?? "Review suggestions and try applying them.", // Use default if missing
-    createdAt: new Date().toISOString(),
+  // Construct the Feedback object using parsed JSON and adding necessary fields
+  const feedbackData = {
+    ...feedbackJson,
+    submissionId: submission.challengeId, // Use challengeId to satisfy FeedbackSchema for now (see thought process)
+    createdAt: new Date().toISOString(), // Generate timestamp locally
+    // Ensure required fields are present (even if empty arrays/string), default if necessary
+    strengths: feedbackJson.strengths ?? [],
+    weaknesses: feedbackJson.weaknesses ?? [],
+    suggestions: feedbackJson.suggestions ?? [],
+    improvementPath: feedbackJson.improvementPath ?? "Review suggestions and try applying them.", // Use default if missing
   };
 
   // Validate the constructed object using Zod schema
   try {
+    // Use parse, which throws on error
     const validatedFeedback = ZodFeedbackSchema.parse(feedbackData);
     console.log(`Generated and validated feedback for submission: ${validatedFeedback.submissionId}`);
     return validatedFeedback;

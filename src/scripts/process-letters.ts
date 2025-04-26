@@ -49,10 +49,12 @@ async function processSingleLetter(letterPath: string, config: Config, aiMemory:
         
         // --- 4. Send Email ---
         if (config.notifications?.emailMentions !== false) { // Check notification preference
+            const emailStyle = config.emailStyle ?? 'casual'; // Use ?? for default
+            const emailSubject = `Tech Interview Practice Update for ${path.basename(letterPath, '.md')}`;
             const emailContent = await email.formatLetterResponseEmail(
                 mentorResponse,
                 letterContent,
-                config.emailStyle || 'casual',
+                emailStyle,
                 mentor.name
             );
             // Pass config and content object to sendEmail
