@@ -81,7 +81,7 @@ export const LetterInsightsSchema = z.object({
     strengths: z.array(z.string()).optional(),
     weaknesses: z.array(z.string()).optional(),
     topics: z.array(z.string()).optional(),
-    sentiment: z.enum(['positive', 'negative', 'neutral']).optional(),
+    sentiment: z.string().optional(),
     skillLevelAdjustment: z.number().optional(),
     flags: z.array(z.string()).optional()
 }).strict(); // Use strict to prevent unexpected fields in insights

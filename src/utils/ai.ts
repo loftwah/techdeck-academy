@@ -464,7 +464,7 @@ export async function generateLetterResponsePrompt(
     ];
   }
 
-  const outputFormatDescription = `Format the response as a single JSON object matching the LetterResponse schema: { content: string (your response to the student), insights: { sentiment?: string, strengths?: string[], weaknesses?: string[], topics?: string[], skillLevelAdjustment?: number, flags?: string[] } }. Respond ONLY with this JSON object.`;
+  const outputFormatDescription = `Format the response as a single JSON object matching the LetterResponse schema: { content: string (your response to the student), insights: { sentiment?: "positive" | "negative" | "neutral", strengths?: string[], weaknesses?: string[], topics?: string[], skillLevelAdjustment?: number, flags?: string[] } }. Respond ONLY with this JSON object. Ensure the sentiment field, if provided, is ONLY one of "positive", "negative", or "neutral".`;
 
   return buildPrompt(
       mentorProfile,
