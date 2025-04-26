@@ -98,6 +98,12 @@ jobs:
           git config --local user.email "academy@techdeck.life"
           git config --local user.name "TechDeck Academy Bot"
           # Add generated response, CORRECT archived original path, updated profile AND ai-memory
-          git add letters/from-mentor/ archive/letters/ student-profile.json ai-memory.md
-          git commit -m "Respond to student letters and update profile" || echo "No changes to commit"
-          git push 
+          # Use data/ prefix and add specific file patterns
+          git add data/student-profile.json data/ai-memory.md data/letters/from-mentor/*.md data/archive/letters/*/*.md
+          # Add [skip ci] to prevent triggering this workflow again from its own commit
+          git commit -m "Respond to student letters and update profile [skip ci]" || echo "No changes to commit"
+          git push
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          # Ensure NODE_ENV or other relevant env vars are set if needed by config/scripts 
