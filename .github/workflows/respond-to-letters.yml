@@ -33,6 +33,9 @@ jobs:
       - name: Install dependencies
         run: npm install # Assuming package.json and lock file are in the root
 
+      - name: Build TypeScript
+        run: npm run build # Assuming 'build' script compiles TS to JS in 'dist'
+
       - name: Identify new letters
         id: find_letters
         # This step needs a script or command to reliably find *new* files since the last run.
@@ -40,12 +43,17 @@ jobs:
         # Using git diff might be more robust if the workflow always commits processed files.
         # For now, placeholder command. Replace with a call to a Node script.
         run: |
-          # PSEUDOCODE / PLACEHOLDER - Replace with robust script call
-          # This needs a script like `node src/scripts/find-new-letters.js` 
-          # that outputs the list of new files, perhaps one per line.
-          echo "Identifying new letters in letters/to-mentor/..."
-          ls -t letters/to-mentor/* > new_letters.txt || echo "No new letters found."
-          echo "files=$(cat new_letters.txt | tr '\n' ' ')" >> $GITHUB_OUTPUT
+          # Execute the compiled script to find new letters
+          echo "Identifying new letters using script..."
+          output=$(node dist/scripts/find-new-letters.js)
+          echo "Found files: $output"
+          # Check if output is empty before setting GITHUB_OUTPUT
+          if [ -z "$output" ]; then
+            echo "No new letters found."
+            echo "files=" >> $GITHUB_OUTPUT
+          else
+            echo "files=$output" >> $GITHUB_OUTPUT
+          fi
 
       - name: Process letters if any found
         if: steps.find_letters.outputs.files != ''
