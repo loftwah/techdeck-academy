@@ -126,30 +126,18 @@ describe('Email Utilities', () => {
     })
   })
 
-  describe('sendEmailWithRetry', () => {
-    // REMOVED skipped tests that previously relied on mocking network failures.
-    // Testing retry logic reliably requires mocking, which is being avoided.
-    /*
-    it.skip('should retry sending email on failure', async () => { ... });
-    it.skip('should throw error after max retries', async () => { ... });
-    */
-    
-    // This test remains but might be redundant if sendEmail test passes.
-    // It primarily tests if the retry wrapper *eventually* calls sendEmail successfully.
-    it('should eventually send an email successfully via the retry wrapper', async () => {
-      // Ensure mockConfig.userEmail is valid if running this test
+  describe('sendEmail Retry Logic', () => {
+    it('should eventually send an email successfully', async () => {
       const content = {
-        subject: 'Live Test - sendEmailWithRetry',
-        html: '<p>This email was sent by a live test (via retry wrapper).</p>'
+        subject: 'Live Test - sendEmail internal retry',
+        html: '<p>This email was sent by a live test (testing internal retry).</p>'
       };
-      // This will call the real Resend API via sendEmail
-      await expect(emailUtils.sendEmailWithRetry(mockConfig, content))
+      await expect(emailUtils.sendEmail(mockConfig, content))
         .resolves.toBeUndefined();
-    }, 30000); // Increase timeout for network calls
+    }, 30000);
   })
 
   describe('sendEmail', () => {
-    // Note: These tests use the LIVE Resend API and require valid credentials in .env
     it('should validate email content before sending', async () => {
       await expect(emailUtils.sendEmail(mockConfig, {
         subject: '',
@@ -168,14 +156,12 @@ describe('Email Utilities', () => {
     })
 
     it('should send an email successfully via Resend', async () => {
-      // Ensure mockConfig.userEmail is valid if running this test
       const content = {
         subject: 'Live Test - sendEmail',
         html: '<p>This email was sent by a live test.</p>'
       }
-      // This calls the real Resend API
       await expect(emailUtils.sendEmail(mockConfig, content))
-        .resolves.toBeUndefined(); // Or check for a specific success indicator if applicable
-    }, 30000) // Increase timeout for network calls
+        .resolves.toBeUndefined();
+    }, 30000)
   })
 }) 

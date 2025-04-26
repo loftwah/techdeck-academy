@@ -64,8 +64,8 @@ export const StudentProfileSchema = z.object({
     name: z.string(), // Added name field
     status: StudentProfileStatusSchema,
     currentSkillLevel: z.number().min(0).max(10),
-    averageScore: z.number().min(0).max(100).optional(), 
-    lastUpdated: isoDateTimeString.optional(), 
+    averageScore: z.number().min(0).max(100),
+    lastUpdated: isoDateTimeString,
     currentChallengeId: z.string().optional(), // Added optional field
     completedChallenges: z.number().min(0).default(0),
     // Use the TopicLevelSchema for the record value

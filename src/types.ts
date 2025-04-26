@@ -30,7 +30,7 @@ export interface Submission {
   challengeId: string
   content: string
   submittedAt: string
-  filePath: string
+  filePath?: string
 }
 
 export interface Feedback {
