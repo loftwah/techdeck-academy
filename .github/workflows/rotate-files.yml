@@ -1,0 +1,105 @@
+name: Rotate Files
+
+on:
+  schedule:
+    # Run at 1:00 AM UTC on the 1st of every month
+    - cron: "0 1 1 * *"
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      forceRotation:
+        description: 'Force rotation even if not scheduled'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  rotate-files:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for accurate dating
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Check if rotation needed
+        id: check-rotation
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.forceRotation }}" == "true" ]]; then
+            echo "should_rotate=true" >> $GITHUB_OUTPUT
+          else
+            # Check if it's the right time for rotation
+            if [[ "$(date +%d)" == "01" ]]; then
+              echo "should_rotate=true" >> $GITHUB_OUTPUT
+            else
+              # Check if files have grown too large
+              node -e "
+                import('./dist/utils/stats-manager.js').then(async ({shouldCompactStats}) => {
+                  const needsCompaction = await shouldCompactStats();
+                  console.log('should_rotate=' + needsCompaction);
+                });
+              " >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Perform file rotation
+        if: steps.check-rotation.outputs.should_rotate == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          # Initialize and perform rotation
+          node -e "
+            import('./dist/index.js').then(async ({initialize, archiveOldContent}) => {
+              await initialize();
+              await archiveOldContent();
+            });
+          "
+
+      - name: Generate rotation report
+        if: steps.check-rotation.outputs.should_rotate == 'true'
+        run: |
+          # Create report directory if it doesn't exist
+          mkdir -p progress/cleanup-reports
+
+          # Generate report
+          {
+            echo "# File Rotation Report"
+            echo "Date: $(date -u)"
+            echo
+            echo "## Statistics"
+            echo "- Challenges: $(ls -1 challenges/*.json 2>/dev/null | wc -l) files"
+            echo "- Submissions: $(ls -1 submissions/*.json 2>/dev/null | wc -l) files"
+            echo "- Feedback: $(ls -1 feedback/*.json 2>/dev/null | wc -l) files"
+            echo
+            echo "## Archive Counts"
+            echo "- Archived Challenges: $(ls -1 archive/challenges/**/*.json 2>/dev/null | wc -l) files"
+            echo "- Archived Submissions: $(ls -1 archive/submissions/**/*.json 2>/dev/null | wc -l) files"
+            echo "- Archived Feedback: $(ls -1 archive/feedback/**/*.json 2>/dev/null | wc -l) files"
+          } > "progress/cleanup-reports/$(date +%Y-%m)-rotation.md"
+
+      - name: Commit changes
+        if: success() && steps.check-rotation.outputs.should_rotate == 'true'
+        run: |
+          git config --local user.email "academy@techdeck.life"
+          git config --local user.name "TechDeck Academy Bot"
+          git add .
+          git commit -m "Monthly file rotation and cleanup" || echo "No changes to commit"
+          git push 

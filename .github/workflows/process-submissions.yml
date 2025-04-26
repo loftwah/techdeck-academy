@@ -1,0 +1,91 @@
+name: Process Submissions
+
+on:
+  push:
+    paths:
+      - 'submissions/**'
+  
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      submissionId:
+        description: 'Specific submission ID to process'
+        required: false
+        type: string
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  process-submission:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # To identify new/changed files
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Identify submissions to process
+        id: identify-submissions
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.submissionId }}" ]]; then
+            # Process specific submission
+            echo "submissions=${{ github.event.inputs.submissionId }}" >> $GITHUB_OUTPUT
+          else
+            # Get newly added or modified submission files
+            SUBMISSIONS=$(git diff --name-only HEAD^ HEAD | grep '^submissions/.*\.json$' || true)
+            if [[ -z "$SUBMISSIONS" ]]; then
+              echo "No new submissions to process"
+              echo "submissions=" >> $GITHUB_OUTPUT
+            else
+              # Extract submission IDs
+              IDS=$(echo "$SUBMISSIONS" | sed 's/^submissions\/\(.*\)\.json$/\1/')
+              echo "submissions=$IDS" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Process submissions
+        if: steps.identify-submissions.outputs.submissions != ''
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          # Initialize the application
+          node -e "
+            import('./dist/index.js').then(async ({initialize}) => {
+              await initialize();
+            });
+          "
+
+          # Process each submission
+          echo "${{ steps.identify-submissions.outputs.submissions }}" | while read -r submissionId; do
+            echo "Processing submission: $submissionId"
+            node -e "
+              import('./dist/index.js').then(async ({processSubmission}) => {
+                const submission = await import('./submissions/${submissionId}.json');
+                await processSubmission(submission.default);
+              });
+            "
+          done
+
+      - name: Commit changes
+        if: success() && steps.identify-submissions.outputs.submissions != ''
+        run: |
+          git config --local user.email "academy@techdeck.life"
+          git config --local user.name "TechDeck Academy Bot"
+          git add feedback/ progress/ student-profile.json
+          git commit -m "Process submissions and generate feedback" || echo "No changes to commit"
+          git push 

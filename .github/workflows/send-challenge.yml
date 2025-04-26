@@ -1,0 +1,91 @@
+name: Send Challenge
+
+on:
+  schedule:
+    # Daily at 9AM UTC
+    - cron: "0 9 * * *"
+    # Mon, Wed, Fri at 9AM UTC
+    - cron: "0 9 * * 1,3,5"
+    # Weekly on Monday at 9AM UTC
+    - cron: "0 9 * * 1"
+
+  # Manual trigger
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  generate-challenge:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Check schedule configuration
+        id: check-schedule
+        run: |
+          # Get current schedule from config
+          SCHEDULE=$(node -e "
+            import('./dist/config.js').then(({config}) => {
+              console.log(config.schedule);
+            });
+          ")
+          
+          # Get current day (0 = Sunday, 1 = Monday, etc.)
+          DAY=$(date +%u)
+          
+          # Determine if we should run today
+          SHOULD_RUN="false"
+          case $SCHEDULE in
+            "daily")
+              SHOULD_RUN="true"
+              ;;
+            "threePerWeek")
+              if [[ $DAY == "1" || $DAY == "3" || $DAY == "5" ]]; then
+                SHOULD_RUN="true"
+              fi
+              ;;
+            "weekly")
+              if [[ $DAY == "1" ]]; then
+                SHOULD_RUN="true"
+              fi
+              ;;
+          esac
+          
+          echo "should_run=$SHOULD_RUN" >> $GITHUB_OUTPUT
+
+      - name: Generate and send challenge
+        if: steps.check-schedule.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          node -e "
+            import('./dist/index.js').then(async ({initialize, generateChallenge}) => {
+              await initialize();
+              await generateChallenge();
+            });
+          "
+
+      - name: Commit changes
+        if: success()
+        run: |
+          git config --local user.email "academy@techdeck.life"
+          git config --local user.name "TechDeck Academy Bot"
+          git add challenges/ progress/
+          git commit -m "Generate new challenge" || echo "No changes to commit"
+          git push 

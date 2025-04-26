@@ -1,0 +1,139 @@
+name: Generate Digests
+
+on:
+  schedule:
+    # Weekly on Sunday at 9AM UTC
+    - cron: "0 9 * * 0"
+    # Monthly on the 1st at 9AM UTC
+    - cron: "0 9 1 * *"
+    # Quarterly on the 1st of Jan, Apr, Jul, Oct at 9AM UTC
+    - cron: "0 9 1 1,4,7,10 *"
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      digestType:
+        description: 'Type of digest to generate'
+        required: true
+        type: choice
+        options:
+          - weekly
+          - monthly
+          - quarterly
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  generate-digest:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Determine digest type
+        id: digest-type
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            DIGEST_TYPE="${{ github.event.inputs.digestType }}"
+          else
+            # Check if it's quarterly first (1st of Jan, Apr, Jul, Oct)
+            MONTH=$(date +%-m)
+            DAY=$(date +%-d)
+            if [[ "$DAY" == "1" && ("$MONTH" == "1" || "$MONTH" == "4" || "$MONTH" == "7" || "$MONTH" == "10") ]]; then
+              DIGEST_TYPE="quarterly"
+            # Then check if it's monthly (1st of any month)
+            elif [[ "$DAY" == "1" ]]; then
+              DIGEST_TYPE="monthly"
+            # Otherwise it must be weekly (we only run on Sundays)
+            else
+              DIGEST_TYPE="weekly"
+            fi
+          fi
+          echo "type=$DIGEST_TYPE" >> $GITHUB_OUTPUT
+
+      - name: Generate digest
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          DIGEST_TYPE: ${{ steps.digest-type.outputs.type }}
+        run: |
+          # Create digest directory
+          DIGEST_DIR="progress/${DIGEST_TYPE}"
+          mkdir -p "$DIGEST_DIR"
+
+          # Generate digest filename
+          if [[ "$DIGEST_TYPE" == "weekly" ]]; then
+            FILENAME="$(date +%Y-W%V).md"
+          elif [[ "$DIGEST_TYPE" == "monthly" ]]; then
+            FILENAME="$(date +%Y-%m).md"
+          else
+            QUARTER=$(((($(date +%-m)-1)/3)+1))
+            FILENAME="$(date +%Y)-Q${QUARTER}.md"
+          fi
+
+          # Initialize application and gather stats
+          node -e "
+            import('./dist/index.js').then(async ({initialize}) => {
+              await initialize();
+            });
+          "
+
+          # Generate digest content using stats and profile data
+          {
+            echo "# ${DIGEST_TYPE^} Progress Report"
+            echo "Generated: $(date -u)"
+            echo
+            
+            echo "## Statistics"
+            node -e "
+              Promise.all([
+                import('./dist/utils/stats-manager.js'),
+                import('./dist/utils/profile-manager.js')
+              ]).then(async ([stats, profile]) => {
+                const statsData = await stats.readStats();
+                const profileData = await profile.readStudentProfile();
+                
+                console.log('### Activity');
+                console.log(\`- Days Active: \${statsData.activity.daysActive}\`);
+                console.log(\`- Current Streak: \${statsData.activity.streakCurrent}\`);
+                console.log(\`- Longest Streak: \${statsData.activity.streakLongest}\`);
+                console.log();
+                
+                console.log('### Progress');
+                console.log(\`- Current Skill Level: \${profileData.currentSkillLevel}/10\`);
+                console.log(\`- Completed Challenges: \${profileData.completedChallenges}\`);
+                console.log(\`- Average Score: \${profileData.averageScore.toFixed(1)}%\`);
+                console.log();
+                
+                console.log('### Topic Progress');
+                Object.entries(profileData.topicProgress)
+                  .sort(([,a], [,b]) => b - a)
+                  .forEach(([topic, progress]) => {
+                    console.log(\`- \${topic}: \${(progress * 100).toFixed(1)}%\`);
+                  });
+              });
+            "
+          } > "$DIGEST_DIR/$FILENAME"
+
+      - name: Commit changes
+        if: success()
+        run: |
+          git config --local user.email "academy@techdeck.life"
+          git config --local user.name "TechDeck Academy Bot"
+          git add progress/
+          git commit -m "Generate ${DIGEST_TYPE} digest" || echo "No changes to commit"
+          git push 
