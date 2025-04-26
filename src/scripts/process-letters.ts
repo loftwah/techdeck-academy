@@ -8,7 +8,7 @@ import * as email from '../utils/email.js';
 import * as files from '../utils/files.js'; // For archiving and directory management
 import { readAIMemoryRaw } from '../utils/ai-memory-manager.js'; // Import memory reader
 import type { StudentProfile, Config, MentorProfile, LetterResponse } from '../types.js';
-import { readStudentProfile, writeStudentProfile } from '../utils/profile-manager.js'; // Added writeStudentProfile
+import { loadOrCreateAndSyncProfile, setProfileStatusActive, writeStudentProfile } from '../utils/profile-manager.js'; // Use new function
 
 async function processSingleLetter(letterPath: string, config: Config, aiMemory: string, mentor: MentorProfile, studentStatus: string): Promise<boolean> {
     console.log(`Processing letter: ${letterPath}`);
@@ -94,38 +94,7 @@ async function main() {
         // Load necessary context once
         const mentorProfile = await profileManager.loadMentorProfile(config.mentorProfile);
         const aiMemory = await readAIMemoryRaw(); // Read AI memory once
-        let studentProfile = await profileManager.readStudentProfile(config); // Try reading profile
-
-        // Check if profile loaded, if not, create a default one
-        if (!studentProfile) {
-            console.warn('Student profile not found or invalid. Creating default profile for letter processing.');
-            const now = new Date().toISOString();
-            // Create default profile matching the StudentProfile type
-            studentProfile = {
-                userId: config.githubUsername || 'default-user',
-                name: config.githubUsername || 'Default User',
-                completedChallenges: 0,
-                averageScore: 0,
-                currentSkillLevel: config.difficulty,
-                lastUpdated: now,
-                status: 'awaiting_introduction', // Initial status
-                topicLevels: {},
-                currentChallengeId: undefined,
-            };
-            // Populate topicLevels correctly
-            for (const topic in config.topics) {
-                if (!studentProfile.topicLevels) {
-                    studentProfile.topicLevels = {};
-                }
-                studentProfile.topicLevels[topic] = { currentLevel: config.topics[topic].currentLevel };
-            }
-            await writeStudentProfile(studentProfile); // Save the new profile
-            console.log('Created and saved a default student profile during letter processing.');
-
-            // No need to exit anymore if we create the profile successfully.
-            // console.error("CRITICAL: Failed to load or validate student profile. Cannot process letters.");
-            // process.exit(1); // REMOVED
-        }
+        let studentProfile = await profileManager.loadOrCreateAndSyncProfile(config);
 
         if (!mentorProfile) {
             // loadMentorProfile logs a warning and returns a default, so this check might not be strictly needed
@@ -160,10 +129,10 @@ async function main() {
                 if (studentProfile.status === 'awaiting_introduction') {
                     console.log('First letter successfully processed, setting profile status to active.');
                     // Pass config to setProfileStatusActive
-                    await profileManager.setProfileStatusActive(config);
+                    await setProfileStatusActive(config);
                     // Reload profile state ONLY IF status change affects subsequent letters in THIS batch
                     // Reading again to get the updated status
-                    const updatedProfile = await profileManager.readStudentProfile(config);
+                    const updatedProfile = await profileManager.loadOrCreateAndSyncProfile(config);
                     if (!updatedProfile) { // Check again, though unlikely to fail now
                          console.error("CRITICAL: Failed to reload profile after status update. Exiting.");
                          process.exit(1);
