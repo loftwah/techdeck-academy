@@ -63,7 +63,7 @@ export const StudentProfileSchema = z.object({
     userId: z.string().min(1),
     name: z.string(), // Added name field
     status: StudentProfileStatusSchema,
-    currentSkillLevel: z.number().min(0).max(10).optional(), 
+    currentSkillLevel: z.number().min(0).max(10),
     averageScore: z.number().min(0).max(100).optional(), 
     lastUpdated: isoDateTimeString.optional(), 
     currentChallengeId: z.string().optional(), // Added optional field

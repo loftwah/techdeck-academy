@@ -11,6 +11,7 @@ const PROFILE_FILE = 'student-profile.json'
 // Default profile structure
 const DEFAULT_PROFILE: StudentProfile = {
   userId: 'default-user',
+  name: 'Default User',
   currentSkillLevel: 1,
   completedChallenges: 0,
   averageScore: 0,
