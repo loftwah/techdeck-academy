@@ -30,6 +30,7 @@ export const ChallengeSchema = z.object({
 
 // Schema for Submission
 export const SubmissionSchema = z.object({
+    // studentId: z.string().min(1, { message: "Student ID is required" }), // Removed studentId
     challengeId: z.string().regex(/^CC-\d{3,}$/, { message: "Invalid Challenge ID format" }),
     content: z.string().min(1, { message: "Submission content cannot be empty" }),
     submittedAt: isoDateTimeString,
@@ -38,7 +39,9 @@ export const SubmissionSchema = z.object({
 
 // Schema for Feedback
 export const FeedbackSchema = z.object({
-    submissionId: z.string().regex(/^CC-\d{3,}$/, { message: "Invalid Challenge ID format for submissionId" }),
+    // studentId: z.string().min(1, { message: "Student ID is required" }), // Removed studentId
+    // challengeId: z.string().regex(/^CC-\d{3,}$/, { message: "Invalid Challenge ID format" }), // Removed challengeId
+    submissionId: z.string().regex(/^CC-\d{3,}$/, { message: "Invalid Challenge ID format for submissionId" }), // Reverted to submissionId
     strengths: z.array(z.string()).optional().default([]),
     weaknesses: z.array(z.string()).optional().default([]),
     suggestions: z.array(z.string()).optional().default([]),

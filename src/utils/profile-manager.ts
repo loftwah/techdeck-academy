@@ -5,6 +5,7 @@ import { linusProfile } from '../profiles/linus.js'
 import { updateAIMemory } from './ai-memory-manager.js'
 import { StudentProfileSchema } from '../schemas.js'
 import { ZodError } from 'zod'
+import { readJsonFileWithSchema, writeJsonFileWithSchema, FileNotFoundError, FileParsingError, FileValidationError, FileWriteError } from './file-operations.js'
 
 const PROFILE_FILE = 'student-profile.json'
 
@@ -19,51 +20,53 @@ const DEFAULT_PROFILE: StudentProfile = {
   topicLevels: {}
 }
 
-// Read student profile
-// Updated return type and added validation
+// Read student profile using the utility
 export async function readStudentProfile(config: Config): Promise<StudentProfile | null> {
   try {
-    const content = await fs.readFile(PROFILE_FILE, 'utf-8')
-    const jsonData = JSON.parse(content);
-    // Validate using Zod
-    const result = StudentProfileSchema.safeParse(jsonData);
-     if (result.success) {
-        // Optional: Could merge with default config here if needed
-        return result.data;
-    } else {
-        console.error(`Invalid student profile file content:`, result.error.errors);
-        return null; // Indicate failure to load/validate
-    }
+    // Utility handles reading, parsing, and validation.
+    // It returns null if file not found (ENOENT).
+    const profile = await readJsonFileWithSchema<StudentProfile>(PROFILE_FILE, StudentProfileSchema);
+    return profile;
   } catch (error) {
-      if (error instanceof SyntaxError) {
-          console.error(`Invalid JSON syntax in profile file ${PROFILE_FILE}:`, error);
-      } else if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
-          console.warn(`Profile file not found: ${PROFILE_FILE}. Consider creating a default.`);
-          // TODO: Optionally create and return a default profile?
-      } else {
-        console.error(`Error reading profile file ${PROFILE_FILE}:`, error);
-      }
-      return null; // Return null on any read/parse/validation error
+    // Catch specific errors from the utility for logging
+    if (error instanceof FileParsingError) {
+      console.error(`Invalid JSON syntax in profile file ${PROFILE_FILE}:`, error.cause);
+    } else if (error instanceof FileValidationError) {
+      console.error(`Invalid student profile file content (${PROFILE_FILE}):`, error.cause);
+    } else if (error instanceof FileNotFoundError) {
+       // This case shouldn't be reached if readJsonFileWithSchema returns null for ENOENT
+       // but kept for robustness or if utility behavior changes.
+       console.warn(`Profile file not found: ${PROFILE_FILE}.`);
+    } else {
+      // Catch other potential FS errors during read (permissions, etc.)
+      console.error(`Error reading profile file ${PROFILE_FILE}:`, error);
+    }
+    return null; // Return null on any error caught here
   }
 }
 
-// Write student profile
-// Added validation before writing
+// Write student profile using the utility
 export async function writeStudentProfile(profileData: StudentProfile): Promise<void> {
   try {
-      // Validate the profile data against the schema before writing
-      StudentProfileSchema.parse(profileData); 
-      await fs.writeFile(PROFILE_FILE, JSON.stringify(profileData, null, 2));
-      console.log('Student profile updated successfully.');
+    await writeJsonFileWithSchema<StudentProfile>(PROFILE_FILE, profileData, StudentProfileSchema);
+    console.log('Student profile updated successfully.');
   } catch (error) {
-      if (error instanceof ZodError) {
-          console.error('Invalid profile data provided for writing:', error.errors);
-          // Decide if we should throw or just log
-          throw new Error('Attempted to write invalid profile data.'); 
-      } else {
-          console.error('Error writing student profile:', error);
-           throw error; // Re-throw other file system errors
-      }
+    if (error instanceof ZodError) {
+        console.error('Invalid profile data provided for writing:', error.errors);
+        throw new Error('Attempted to write invalid profile data.');
+    } else if (error instanceof FileWriteError) {
+        console.error(`Error writing student profile ${PROFILE_FILE}:`, error.cause);
+        throw error;
+    } else {
+        // Add check for generic Error
+        if (error instanceof Error) {
+            console.error('Unexpected error writing student profile:', error.message);
+        } else {
+            console.error('Unexpected non-error thrown while writing student profile:', error);
+        }
+        // Re-throw the original error regardless of type for upstream handling
+        throw error; 
+    }
   }
 }
 
@@ -182,31 +185,31 @@ export async function updateProfileWithFeedback(
   challenge: Challenge,
   feedback: Feedback
 ): Promise<void> {
-  const profile = await readStudentProfile(config)
-  const now = new Date().toISOString()
+  const profile = await readStudentProfile(config);
+  const now = new Date().toISOString();
 
-  // --- Update Core Metrics in JSON Profile ---
   if (profile) {
-    profile.completedChallenges++
+    // Use nullish coalescing for completedChallenges
+    profile.completedChallenges = (profile.completedChallenges ?? 0) + 1;
 
-    profile.lastUpdated = now
-    await writeStudentProfile(profile) // Write minimal profile
+    profile.lastUpdated = now;
+    await writeStudentProfile(profile);
 
-    // --- Log Detailed Context to AI Memory ---
+    // Use optional chaining and nullish coalescing for feedback arrays
     const memoryEntry = `
 *   **Challenge Completed:** ${challenge.title} (ID: ${challenge.id})
-*   **AI Feedback Summary:** (Strengths: ${feedback.strengths.join(', ') || 'None'}, Weaknesses: ${feedback.weaknesses.join(', ') || 'None'}, Suggestions: ${feedback.suggestions.join(', ') || 'None'})
+*   **AI Feedback Summary:** (Strengths: ${feedback.strengths?.join(', ') || 'None'}, Weaknesses: ${feedback.weaknesses?.join(', ') || 'None'}, Suggestions: ${feedback.suggestions?.join(', ') || 'None'})
 *   **Timestamp:** ${now}
-    `
+    `;
 
     try {
-      await updateAIMemory('recentActivity', memoryEntry.trim())
-      console.log(`Logged feedback context for challenge ${challenge.id} to AI memory.`)
+      await updateAIMemory('recentActivity', memoryEntry.trim());
+      console.log(`Logged feedback context for challenge ${challenge.id} to AI memory.`);
     } catch (error) {
-      console.error(`Failed to log feedback context for challenge ${challenge.id} to AI memory:`, error)
+      console.error(`Failed to log feedback context for challenge ${challenge.id} to AI memory:`, error);
     }
   } else {
-    console.error('Profile not found, unable to update feedback.')
+    console.error('Profile not found, unable to update feedback.');
   }
 }
 

@@ -19,8 +19,8 @@ export interface Challenge {
   title: string
   description: string
   type: ChallengeType
-  requirements: string[]
-  examples: string[]
+  requirements?: string[]
+  examples?: string[]
   hints?: string[]
   difficulty: number
   topics: string[]
@@ -36,10 +36,10 @@ export interface Submission {
 
 export interface Feedback {
   submissionId: string
-  strengths: string[]
-  weaknesses: string[]
-  suggestions: string[]
-  improvementPath: string
+  strengths?: string[]
+  weaknesses?: string[]
+  suggestions?: string[]
+  improvementPath?: string
   createdAt: string
 }
 
@@ -48,7 +48,7 @@ export interface StudentProfile {
   userId: string // Could be GitHub username or a unique ID
   name: string // Added name field
   currentSkillLevel: number // Overall level (1-10) - reflects config.difficulty
-  completedChallenges: number
+  completedChallenges?: number // Made optional
   lastUpdated: string // ISO date string
   status: 'awaiting_introduction' | 'active' | 'paused' | 'completed' // Learning status
   topicLevels?: Record<string, { currentLevel: number }> // Reflects config.topics

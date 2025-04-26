@@ -1,14 +1,16 @@
-import { promises as fs } from 'fs'
 import path from 'path'
-import type { Challenge, Submission, Feedback, StudentProfile } from '../types.js'
+import { promises as fs } from 'fs'
+import type { Challenge, Submission, Feedback } from '../types.js'
 import { ChallengeSchema, SubmissionSchema, FeedbackSchema } from '../schemas.js'
-import { ZodError } from 'zod'
+import { readJsonFileWithSchema, writeJsonFileWithSchema } from './file-operations.js'
 
 // Base paths for different file types
 const PATHS = {
   challenges: 'challenges',
+  studentsBase: 'students',
   submissions: 'submissions',
   feedback: 'feedback',
+  profiles: (studentId: string) => path.join(PATHS.studentsBase, studentId),
   letters: {
     toMentor: 'letters/to-mentor',
     fromMentor: 'letters/from-mentor',
@@ -29,11 +31,12 @@ const PATHS = {
 } as const
 
 // Ensure directories exist
-export async function ensureDirectories(): Promise<void> {
+export async function ensureDataDirectories(): Promise<void> {
   const allPaths = [
     PATHS.challenges,
     PATHS.submissions,
     PATHS.feedback,
+    PATHS.studentsBase,
     PATHS.letters.toMentor,
     PATHS.letters.fromMentor,
     PATHS.letters.archive,
@@ -47,40 +50,29 @@ export async function ensureDirectories(): Promise<void> {
     PATHS.progress.cleanupReports
   ]
 
-  for (const dir of allPaths) {
-    await fs.mkdir(dir, { recursive: true })
+  for (const dirPath of allPaths) {
+    try {
+      const dataDirRoot = path.resolve(process.cwd(), 'data')
+      await fs.mkdir(path.resolve(dataDirRoot, dirPath), { recursive: true })
+    } catch (error) {
+      console.error(`Failed to ensure directory ${dirPath}:`, error)
+    }
   }
 }
 
 // Challenge operations
+export function getChallengeFilePath(challengeId: string): string {
+  return path.join(PATHS.challenges, `${challengeId}.json`)
+}
+
 export async function writeChallenge(challenge: Challenge): Promise<void> {
-  const filename = `${challenge.id}.json`
-  const filepath = path.join(PATHS.challenges, filename)
-  await fs.writeFile(filepath, JSON.stringify(challenge, null, 2))
+  const filepath = getChallengeFilePath(challenge.id)
+  await writeJsonFileWithSchema(filepath, challenge, ChallengeSchema)
 }
 
 export async function readChallenge(challengeId: string): Promise<Challenge | null> {
-  const filepath = path.join(PATHS.challenges, `${challengeId}.json`)
-  try {
-    const content = await fs.readFile(filepath, 'utf-8')
-    const jsonData = JSON.parse(content);
-    const result = ChallengeSchema.safeParse(jsonData);
-    if (result.success) {
-        return result.data;
-    } else {
-        console.error(`Invalid challenge file content for ${challengeId}:`, result.error.errors);
-        return null; 
-    }
-  } catch (error) {
-      if (error instanceof SyntaxError) {
-          console.error(`Invalid JSON syntax in challenge file ${challengeId}:`, error);
-      } else if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
-          console.warn(`Challenge file not found: ${filepath}`);
-      } else {
-        console.error(`Error reading challenge file ${filepath}:`, error);
-      }
-      return null;
-  }
+  const filepath = getChallengeFilePath(challengeId)
+  return await readJsonFileWithSchema<Challenge>(filepath, ChallengeSchema)
 }
 
 export async function listChallenges(): Promise<string[]> {
@@ -89,74 +81,52 @@ export async function listChallenges(): Promise<string[]> {
 }
 
 // Submission operations
-export async function writeSubmission(submission: Submission): Promise<void> {
-  const filename = `${submission.challengeId}-${Date.now()}.json`
-  const filepath = path.join(PATHS.submissions, filename)
-  await fs.writeFile(filepath, JSON.stringify(submission, null, 2))
+export async function writeSubmission(submission: Submission): Promise<string> {
+  const submissionId = `${submission.challengeId}-${Date.now()}`;
+  const filename = `${submissionId}.json`;
+  const relativePath = path.join(PATHS.submissions, filename);
+  await writeJsonFileWithSchema<Submission>(relativePath, submission, SubmissionSchema);
+  return submissionId;
 }
 
 export async function readSubmission(submissionId: string): Promise<Submission | null> {
-  const filepath = path.join(PATHS.submissions, `${submissionId}.json`)
-  try {
-    const content = await fs.readFile(filepath, 'utf-8');
-    const jsonData = JSON.parse(content);
-    const result = SubmissionSchema.safeParse(jsonData);
-     if (result.success) {
-        return result.data;
-    } else {
-        console.error(`Invalid submission file content for ${submissionId}:`, result.error.errors);
-        return null; 
-    }
-  } catch (error) {
-      if (error instanceof SyntaxError) {
-          console.error(`Invalid JSON syntax in submission file ${submissionId}:`, error);
-      } else if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
-          console.warn(`Submission file not found: ${filepath}`);
-      } else {
-          console.error(`Error reading submission file ${filepath}:`, error);
-      }
-      return null; 
-  }
+  const relativePath = path.join(PATHS.submissions, `${submissionId}.json`);
+  console.warn(`Reading submission using assumed path: ${relativePath}. This might fail if filename includes timestamp.`);
+  return await readJsonFileWithSchema<Submission>(relativePath, SubmissionSchema);
 }
 
 export async function listSubmissions(challengeId?: string): Promise<string[]> {
-  const files = await fs.readdir(PATHS.submissions)
-  const submissions = files.filter(f => f.endsWith('.json'))
-  if (challengeId) {
-    return submissions.filter(f => f.startsWith(challengeId))
+  const dataDirRoot = path.resolve(process.cwd(), 'data')
+  const submissionsDir = path.resolve(dataDirRoot, PATHS.submissions)
+  try {
+    const files = await fs.readdir(submissionsDir)
+    const submissions = files.filter(f => f.endsWith('.json'))
+    if (challengeId) {
+      return submissions.filter(f => f.startsWith(challengeId + '-')).map(f => f.replace('.json', ''))
+    }
+    return submissions.map(f => f.replace('.json', ''))
+  } catch (error) {
+    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return []
+    }
+    console.error("Failed to list submissions:", error)
+    throw error
   }
-  return submissions.map(f => f.replace('.json', ''))
 }
 
 // Feedback operations (Reinstated - needed by index.ts)
+export function getFeedbackFilePath(submissionId: string): string {
+  return path.join(PATHS.feedback, `${submissionId}.json`);
+}
+
 export async function writeFeedback(feedback: Feedback): Promise<void> {
-  const filename = `${feedback.submissionId}.json`; // Feedback is keyed by submissionId
-  const filepath = path.join(PATHS.feedback, filename);
-  await fs.writeFile(filepath, JSON.stringify(feedback, null, 2));
+  const filepath = getFeedbackFilePath(feedback.submissionId);
+  await writeJsonFileWithSchema<Feedback>(filepath, feedback, FeedbackSchema);
 }
 
 export async function readFeedback(submissionId: string): Promise<Feedback | null> {
-  const filepath = path.join(PATHS.feedback, `${submissionId}.json`);
-  try {
-    const content = await fs.readFile(filepath, 'utf-8');
-    const jsonData = JSON.parse(content);
-    const result = FeedbackSchema.safeParse(jsonData);
-     if (result.success) {
-        return result.data;
-    } else {
-        console.error(`Invalid feedback file content for submission ${submissionId}:`, result.error.errors);
-        return null; 
-    }
-  } catch (error) {
-       if (error instanceof SyntaxError) {
-          console.error(`Invalid JSON syntax in feedback file for ${submissionId}:`, error);
-      } else if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
-          console.warn(`Feedback file not found: ${filepath}`);
-      } else {
-          console.error(`Error reading feedback file ${filepath}:`, error);
-      }
-      return null; 
-  }
+  const filepath = getFeedbackFilePath(submissionId);
+  return await readJsonFileWithSchema<Feedback>(filepath, FeedbackSchema);
 }
 
 // Archive operations
@@ -174,13 +144,40 @@ export async function archiveChallenge(challengeId: string): Promise<void> {
 
 export async function archiveSubmission(submissionId: string): Promise<void> {
   const monthDir = getMonthDir()
-  const archivePath = path.join(PATHS.archive.submissions, monthDir)
-  
-  await fs.mkdir(archivePath, { recursive: true })
-  await fs.rename(
-    path.join(PATHS.submissions, `${submissionId}.json`),
-    path.join(archivePath, `${submissionId}.json`)
-  )
+  const dataDirRoot = path.resolve(process.cwd(), 'data')
+  const sourceDir = path.resolve(dataDirRoot, PATHS.submissions)
+  const archiveBaseDir = path.resolve(dataDirRoot, PATHS.archive.submissions)
+  const archiveMonthDir = path.join(archiveBaseDir, monthDir)
+  const sourceFile = path.join(sourceDir, `${submissionId}.json`)
+  const destFile = path.join(archiveMonthDir, `${submissionId}.json`)
+
+  try {
+    await fs.mkdir(archiveMonthDir, { recursive: true })
+    await fs.rename(sourceFile, destFile)
+    console.log(`Archived submission ${submissionId} to ${archiveMonthDir}`)
+  } catch (error) {
+    console.error(`Failed to archive submission ${submissionId}:`, error)
+    throw error
+  }
+}
+
+export async function archiveFeedback(submissionId: string): Promise<void> {
+  const monthDir = getMonthDir()
+  const dataDirRoot = path.resolve(process.cwd(), 'data')
+  const sourceDir = path.resolve(dataDirRoot, PATHS.feedback)
+  const archiveBaseDir = path.resolve(dataDirRoot, PATHS.archive.feedback)
+  const archiveMonthDir = path.join(archiveBaseDir, monthDir)
+  const sourceFile = path.join(sourceDir, `${submissionId}.json`)
+  const destFile = path.join(archiveMonthDir, `${submissionId}.json`)
+
+  try {
+    await fs.mkdir(archiveMonthDir, { recursive: true })
+    await fs.rename(sourceFile, destFile)
+    console.log(`Archived feedback ${submissionId} to ${archiveMonthDir}`)
+  } catch (error) {
+    console.error(`Failed to archive feedback ${submissionId}:`, error)
+    throw error
+  }
 }
 
 // Helper functions
@@ -202,63 +199,58 @@ export async function isFileOlderThan(filepath: string, days: number): Promise<b
 // Generic file existence check
 export async function fileExists(filepath: string): Promise<boolean> {
   try {
-    await fs.access(filepath); // Check if file is accessible
-    return true;
+    await fs.access(filepath)
+    return true
   } catch (error) {
-    // If error code is ENOENT (File not found), return false
     if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return false;
+      return false
     }
-    // Re-throw other errors (e.g., permissions)
-    throw error;
+    throw error
   }
 }
 
 // Generic archive function
 export async function archiveFile(sourcePath: string, targetArchiveBaseDir: string): Promise<void> {
-  let filename = path.basename(sourcePath);
-  const monthDir = getMonthDir(); // Use existing helper for YYYY-MM subdirectory
-  const archiveDirPath = path.join(targetArchiveBaseDir, monthDir);
-  let targetPath = path.join(archiveDirPath, filename);
+  let filename = path.basename(sourcePath)
+  const monthDir = getMonthDir()
+  const archiveDirPath = path.join(targetArchiveBaseDir, monthDir)
+  let targetPath = path.join(archiveDirPath, filename)
 
-  await ensureDirectories(); // Ensure base directories exist first
-  await fs.mkdir(archiveDirPath, { recursive: true }); // Ensure the specific month archive dir exists
+  await ensureDataDirectories()
+  await fs.mkdir(archiveDirPath, { recursive: true })
 
-  // Check if target file already exists
   if (await fileExists(targetPath)) {
-    const timestamp = Date.now();
-    const ext = path.extname(filename);
-    const base = path.basename(filename, ext);
-    const newFilename = `${base}-${timestamp}${ext}`;
-    targetPath = path.join(archiveDirPath, newFilename);
-    console.warn(`Target archive path ${path.join(archiveDirPath, filename)} already exists. Renaming to ${targetPath}`);
+    const timestamp = Date.now()
+    const ext = path.extname(filename)
+    const base = path.basename(filename, ext)
+    const newFilename = `${base}-${timestamp}${ext}`
+    targetPath = path.join(archiveDirPath, newFilename)
+    console.warn(`Target archive path ${path.join(archiveDirPath, filename)} already exists. Renaming to ${targetPath}`)
   }
   
-  console.log(`Archiving ${sourcePath} to ${targetPath}`); // Add logging
+  console.log(`Archiving ${sourcePath} to ${targetPath}`)
   try {
-      await fs.rename(sourcePath, targetPath); // Move the file
+    await fs.rename(sourcePath, targetPath)
   } catch (error) {
-      console.error(`Error during fs.rename from ${sourcePath} to ${targetPath}:`, error);
-      // Re-throw the error to indicate archiving failed
-      throw new Error(`Failed to archive file ${filename}: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`Error during fs.rename from ${sourcePath} to ${targetPath}:`, error)
+    throw new Error(`Failed to archive file ${filename}: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
 // Specific archive function for introduction.md
 export async function archiveIntroduction(): Promise<void> {
-  const sourcePath = path.join(PATHS.letters.toMentor, 'introduction.md');
-  const targetArchiveBaseDir = PATHS.archive.letters; // Archive with other letters
+  const sourcePath = path.join(PATHS.letters.toMentor, 'introduction.md')
+  const targetArchiveBaseDir = PATHS.archive.letters
 
   try {
     if (await fileExists(sourcePath)) {
-      await archiveFile(sourcePath, targetArchiveBaseDir);
-      console.log(`Archived introduction.md successfully.`);
+      await archiveFile(sourcePath, targetArchiveBaseDir)
+      console.log(`Archived introduction.md successfully.`)
     } else {
-      console.log('introduction.md not found in to-mentor, skipping archive.');
+      console.log('introduction.md not found in to-mentor, skipping archive.')
     }
   } catch (error) {
-    console.error(`Error archiving introduction.md: ${error}`);
-    // Decide if we should re-throw or just log
+    console.error(`Error archiving introduction.md: ${error}`)
   }
 }
 
