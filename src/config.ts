@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Config, MentorProfile, EmailStyle, Schedule, SubjectArea } from './types.js'
+import { Config, MentorProfile, EmailStyle, Schedule, SubjectArea, ChallengeType } from './types.js'
 
 // Environment variable validation schema
 const envSchema = z.object({
@@ -17,7 +17,7 @@ export const config: Config = {
   githubUsername: 'loftwah',
 
   // Learning preferences
-  subjectAreas: ['programming', 'devops'],
+  subjectAreas: ['programming', 'devops', 'aws'],
   topics: {
     programming: {
       'typescript': { currentLevel: 3, lastTested: '' },
@@ -38,6 +38,7 @@ export const config: Config = {
   },
   difficulty: 5,
   sessionLength: 60,
+  preferredChallengeTypes: ['coding', 'question', 'iac', 'mcq'] as ChallengeType[],
 
   // Style preferences
   mentorProfile: 'linus',

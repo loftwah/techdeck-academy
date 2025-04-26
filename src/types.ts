@@ -12,7 +12,7 @@ export interface MentorProfile {
 
 export type EmailStyle = 'casual' | 'formal' | 'technical' | 'supportive'
 export type Schedule = 'daily' | 'threePerWeek' | 'weekly' | 'manual'
-export type SubjectArea = 'programming' | 'devops' | 'networking' | 'security' | 'cloud' | 'databases'
+export type SubjectArea = 'programming' | 'devops' | 'networking' | 'security' | 'cloud' | 'databases' | 'aws';
 
 // Core Types
 export interface Challenge {
@@ -59,6 +59,9 @@ export interface TopicConfig {
   description?: string; // Optional description for AI context
 }
 
+// Add ChallengeType definition
+export type ChallengeType = 'coding' | 'iac' | 'question' | 'mcq' | 'design' | 'casestudy';
+
 export interface Config {
   // Personal information
   userEmail: string
@@ -69,6 +72,7 @@ export interface Config {
   topics: Record<string, Record<string, { currentLevel: number; lastTested: string }>>; // Category -> Topic -> Details
   difficulty: number // 1-10
   sessionLength: number // minutes
+  preferredChallengeTypes?: ChallengeType[]; // Added optional array
 
   // Style preferences
   mentorProfile: string // filename in src/profiles/

@@ -22,30 +22,32 @@ const genAI = new GoogleGenerativeAI(apiKey)
 
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }); // Updated model name
 
-// Define the formal schema for the Challenge object using strings
+// Define the formal schema for the Challenge object
 const ChallengeSchema = {
-  type: 'object', // Use string 'object'
+  type: 'object',
   properties: {
     id: { type: 'string', description: "Unique challenge identifier (e.g., CC-001)" },
     title: { type: 'string', description: "Concise title for the challenge" },
-    description: { type: 'string', description: "Detailed description of the challenge task" },
+    description: { type: 'string', description: "Detailed description of the challenge/question" },
     requirements: { 
-      type: 'array', // Use string 'array'
-      items: { type: 'string' }, // Use string 'string'
-      description: "List of specific requirements the solution must meet"
+      type: 'array', 
+      items: { type: 'string' },
+      description: "List of specific requirements (for coding/iac) or context (for questions)",
+      nullable: true
     },
     examples: { 
       type: 'array', 
-      items: { type: 'string' },
-      description: "Illustrative examples of input/output or usage"
+      items: { type: 'string' }, 
+      description: "Illustrative examples, code snippets, or multiple-choice options",
+      nullable: true
     },
     hints: { 
       type: 'array', 
       items: { type: 'string' },
       description: "Optional hints to guide the student",
-      nullable: true // Explicitly allow hints to be null or absent
+      nullable: true 
     },
-    difficulty: { type: 'number', description: "Difficulty rating from 1 to 10" }, // Use string 'number'
+    difficulty: { type: 'number', description: "Difficulty rating from 1 to 10" },
     topics: { 
       type: 'array', 
       items: { type: 'string' },
@@ -53,20 +55,28 @@ const ChallengeSchema = {
     },
     createdAt: { type: 'string', format: "date-time", description: "ISO timestamp of creation" }
   },
-  // Removed hints from required as it's optional
-  required: ['id', 'title', 'description', 'requirements', 'examples', 'difficulty', 'topics', 'createdAt'] 
+  required: ['id', 'title', 'description', 'difficulty', 'topics', 'createdAt'] 
 };
 
-// Refactored: generateChallengePrompt - Removed explicit JSON formatting request
+// Updated generateChallengePrompt to handle challenge types
 export async function generateChallengePrompt(
   config: Config,
-  aiMemory: string, // Changed parameter
-  recentChallenges: Challenge[] // Keep recentChallenges for specific avoidance
+  aiMemory: string,
+  recentChallenges: Challenge[]
 ): Promise<string> {
   const allTopics: string[] = [];
   Object.entries(config.topics).forEach(([category, topics]) => {
     Object.keys(topics).forEach(topic => allTopics.push(topic));
   });
+
+  // --- Select Challenge Type ---
+  // Default to coding if not specified or empty
+  const availableTypes = config.preferredChallengeTypes && config.preferredChallengeTypes.length > 0 
+                         ? config.preferredChallengeTypes 
+                         : ['coding'];
+  // Simple random selection for now
+  const selectedType = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+  console.log(`Selected challenge type: ${selectedType}`); // Log selected type
 
   const context = {
     recentTopics: recentChallenges.map(c => c.topics).flat(),
@@ -75,8 +85,8 @@ export async function generateChallengePrompt(
     subjectAreas: config.subjectAreas
   };
 
-  // Simplified prompt, relies on responseSchema for JSON format
-  return `Generate a coding or technical challenge based on the following context:
+  // --- Build Prompt with Type-Specific Instructions ---
+  let prompt = `Generate a challenge of type: **${selectedType}** based on the following context:
 
 --- START AI TEACHER'S NOTES ---
 ${aiMemory}
@@ -87,22 +97,79 @@ Subject Areas: ${context.subjectAreas.join(', ')}
 All Available Topics: ${context.allConfiguredTopics.join(', ')}
 Preferred Difficulty: ${context.preferredDifficulty}/10
 Recent Challenge Topics (Avoid direct repeats): ${context.recentTopics.join(', ') || 'No recent challenges'}
+Preferred Challenge Types: ${availableTypes.join(', ')}
 
-Generate an appropriate challenge based on the student's progress documented in the Teacher's Notes and their preferences. The challenge type should match their subject areas:
-- For programming, create a coding exercise with clear requirements, examples and test cases.
-- For devops, create a practical infrastructure task with verification steps.
-- For cloud (AWS/Azure/GCP), design a cloud architecture or implementation task.
-- For networking, create a scenario that tests understanding of protocols and architecture.
+Base the challenge on the student's progress documented in the Teacher's Notes and their preferences.
+`;
 
-The challenge should:
-1. Be appropriately difficult considering the notes.
-2. Help address weaknesses noted in the history.
-3. Build upon strengths noted in the history.
-4. Not repeat too similar topics from recent challenges listed above.
-5. Include clear requirements and examples.
-6. For coding challenges, provide example inputs and outputs.
+  // Add type-specific generation instructions
+  switch (selectedType) {
+    case 'coding':
+      prompt += `
+Instructions for 'coding' type:
+- Create a coding exercise with a clear problem statement in 'description'.
+- Provide specific technical requirements in the 'requirements' array.
+- Include illustrative code examples (input/output) in the 'examples' array.
+- Ensure it matches the student's subject areas (e.g., programming languages).
+`;
+      break;
+    case 'iac':
+      prompt += `
+Instructions for 'iac' type:
+- Create a practical Infrastructure as Code task (e.g., Terraform, CloudFormation, Dockerfile, K8s manifest) described in 'description'.
+- List specific resources to create or configure in the 'requirements' array.
+- Provide example configurations or expected outcomes in the 'examples' array.
+- Ensure it aligns with the student's subject areas (e.g., devops, cloud provider like aws).
+`;
+      break;
+    case 'question':
+      prompt += `
+Instructions for 'question' type:
+- Pose a clear conceptual or short research question in the 'description'.
+- The 'requirements' array can be empty or provide brief context/constraints for the answer.
+- The 'examples' array should be empty.
+`;
+      break;
+    case 'mcq':
+      prompt += `
+Instructions for 'mcq' type:
+- Pose a multiple-choice question in the 'description'.
+- List the answer options (e.g., A, B, C, D) in the 'examples' array. Clearly mark the correct answer(s) if possible (e.g., "A) Option 1 (correct)").
+- The 'requirements' array should be empty.
+`;
+      break;
+    case 'design':
+       prompt += `
+Instructions for 'design' type:
+- Describe a system design scenario or problem in the 'description'.
+- List key constraints, components, or areas to focus on in the 'requirements' array.
+- The 'examples' array can be empty or show a snippet of a desired output format (e.g., component list).
+`;
+       break;
+     case 'casestudy':
+       prompt += `
+Instructions for 'casestudy' type:
+- Present a technical case study or scenario in the 'description'.
+- Pose specific questions about the case study to analyze in the 'requirements' array.
+- The 'examples' array should be empty.
+`;
+       break;
+    default:
+      prompt += `
+Instructions for default/unknown type:
+- Generate a standard coding challenge as described for the 'coding' type.
+`;
+  }
 
-Think step-by-step to create all the necessary fields for the challenge data structure (id, title, description, requirements, examples, hints, difficulty, topics, createdAt).`;
+  prompt += `
+General Requirements:
+- The challenge should be appropriately difficult considering the notes.
+- Help address weaknesses noted in the history.
+- Build upon strengths noted in the history.
+- Not repeat too similar topics from recent challenges listed above.
+- Think step-by-step to create all the necessary fields for the challenge data structure (id, title, description, requirements, examples, hints, difficulty, topics, createdAt), ensuring they fit the requested challenge type. Fill optional fields (hints, requirements, examples) only if appropriate for the type.`;
+
+  return prompt;
 }
 
 // Refactored: Uses aiMemory string instead of StudentProfile object
