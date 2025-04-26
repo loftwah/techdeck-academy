@@ -80,14 +80,21 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           node -e "
-            import('./dist/index.js').then(async ({initialize, generateChallenge}) => {
-              const profile = await initialize();
-              if (profile.completedChallenges === 0) {
-                console.log('First-time user. Welcome email sent during initialization.');
-              } else {
+            import('./dist/index.js').then(async ({initialize, generateChallenge, config, files}) => {
+              const studentProfile = await initialize();
+              const introductionPath = require('path').join('${GITHUB_WORKSPACE}', files.PATHS.toMentor, 'introduction.md');
+              const fs = require('fs');
+
+              const introExists = fs.existsSync(introductionPath);
+              
+              if (introExists || studentProfile.completedChallenges > 0) {
+                console.log('Introduction found or challenges already started. Generating challenge...');
                 await generateChallenge();
+              } else {
+                console.log('First-time user, no introduction found. Welcome email was sent during initialization.');
               }
             });
           "
