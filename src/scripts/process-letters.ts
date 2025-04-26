@@ -1,60 +1,73 @@
 // src/scripts/process-letters.ts
 import fs from 'fs/promises';
 import path from 'path';
-import { readConfig } from '../config'; // Assuming config loader exists
-import { readStudentProfile, writeStudentProfile } from '../utils/profile-manager'; // Assuming these exist
-import { generateLetterResponsePrompt, callGeminiAPI, parseLetterResponse } from '../utils/ai'; // Assuming these exist/need creation
-import { sendEmail, formatLetterResponseEmail } from '../utils/email'; // Assuming these exist
-import { loadMentorProfile } from '../profiles'; // Assuming profile loader exists
-import { StudentProfile, Config, MentorProfile, LetterResponse } from '../types'; // Assuming types exist
+import { config } from '../config.js'; // Use the direct config import
+import * as profileManager from '../utils/profile-manager.js';
+import * as ai from '../utils/ai.js';
+import * as email from '../utils/email.js';
+import * as files from '../utils/files.js'; // For archiving and directory management
+import type { StudentProfile, Config, MentorProfile, LetterResponse } from '../types.js';
 
+const LETTERS_TO_MENTOR_DIR = path.join('letters', 'to-mentor');
 const LETTERS_FROM_MENTOR_DIR = path.join('letters', 'from-mentor');
-const LETTERS_ARCHIVE_DIR = path.join('letters', 'archive'); // Define a dedicated archive
+// Archive directory structure: archive/letters/to-mentor/ and archive/letters/from-mentor/
+const ARCHIVE_LETTERS_TO_MENTOR_DIR = path.join('archive', 'letters', 'to-mentor');
+const ARCHIVE_LETTERS_FROM_MENTOR_DIR = path.join('archive', 'letters', 'from-mentor');
 
 async function processSingleLetter(letterPath: string, config: Config, profile: StudentProfile, mentor: MentorProfile): Promise<boolean> {
     console.log(`Processing letter: ${letterPath}`);
+    const letterFilename = path.basename(letterPath);
     try {
         const letterContent = await fs.readFile(letterPath, 'utf-8');
 
-        // --- 1. Prepare AI Prompt ---
-        // TODO: Need to implement context gathering (recent correspondence)
-        const recentCorrespondence: string[] = []; // Placeholder
-        const prompt = generateLetterResponsePrompt(letterContent, recentCorrespondence, profile, mentor); // Needs implementation
+        // --- 1. Generate AI Response ---
+        // TODO: Gather recent correspondence if needed for better context
+        const recentCorrespondence: string[] = []; // Placeholder for now
+        const mentorResponse = await ai.generateLetterResponse(
+            letterContent,
+            recentCorrespondence,
+            profile,
+            mentor,
+            config // Pass config for subject areas etc.
+        );
 
-        // --- 2. Call AI API ---
-        const rawResponse = await callGeminiAPI(prompt); // Assumes GEMINI_API_KEY is env var
-        const mentorResponse: LetterResponse = parseLetterResponse(rawResponse); // Needs implementation
-
-        // --- 3. Save Mentor Response ---
-        const responseFileName = `${path.basename(letterPath, path.extname(letterPath))}-response.md`;
+        // --- 2. Save Mentor Response ---
+        const responseFileName = `${path.basename(letterFilename, path.extname(letterFilename))}-response.md`;
         const responseFilePath = path.join(LETTERS_FROM_MENTOR_DIR, responseFileName);
-        await fs.mkdir(LETTERS_FROM_MENTOR_DIR, { recursive: true });
-        await fs.writeFile(responseFilePath, mentorResponse.content); // Assuming response has a 'content' field
+        await files.ensureDirectories(); // Corrected function name
+        await fs.writeFile(responseFilePath, mentorResponse.content);
         console.log(`Mentor response saved to: ${responseFilePath}`);
 
-        // --- 4. Update Student Profile ---
-        // TODO: Implement logic to update profile based on interaction/response
-        // profile.notes = profile.notes + `\nResponded to letter ${path.basename(letterPath)} on ${new Date().toISOString()}. Key points: ...`;
-        // profile.lastUpdated = new Date().toISOString();
-        // For now, just saving it back to update timestamp potentially
-        profile.lastUpdated = new Date().toISOString(); // Update timestamp
-        await writeStudentProfile(profile);
+        // --- 3. Update Student Profile ---
+        await profileManager.updateProfileFromLetterInsights(mentorResponse.insights);
+        // The update function already saves the profile and updates timestamp
 
-        // --- 5. Send Email ---
-        const emailContent = formatLetterResponseEmail(mentorResponse, letterContent, config.emailStyle || 'casual'); // Use configured style // Needs implementation
-        await sendEmail(config.userEmail, emailContent.subject, emailContent.body); // Assumes RESEND_API_KEY is env var
-        console.log(`Email sent to: ${config.userEmail}`);
+        // --- 4. Send Email ---
+        if (config.notifications?.emailMentions !== false) { // Check notification preference
+            const emailContent = await email.formatLetterResponseEmail( // Added await
+                mentorResponse,
+                letterContent,
+                config.emailStyle || 'casual',
+                mentor.name
+            );
+            // Pass config and content object to sendEmail
+            await email.sendEmail(config, emailContent);
+            console.log(`Email sent to: ${config.userEmail}`);
+        } else {
+            console.log('Email notifications for letters are disabled in config.');
+        }
 
-        // --- 6. Archive Processed Letter ---
-        const archivePath = path.join(LETTERS_ARCHIVE_DIR, path.basename(letterPath));
-        await fs.mkdir(LETTERS_ARCHIVE_DIR, { recursive: true });
-        await fs.rename(letterPath, archivePath); // Move the original letter
-        console.log(`Archived original letter to: ${archivePath}`);
+        // --- 5. Archive Processed Letter ---
+        // Use the generic archiveFile function
+        await files.archiveFile(letterPath, ARCHIVE_LETTERS_TO_MENTOR_DIR);
+        console.log(`Archived original letter to: ${path.join(ARCHIVE_LETTERS_TO_MENTOR_DIR, path.basename(letterPath))}`); // Log correct path
 
         return true; // Indicate success
 
     } catch (error) {
-        console.error(`Failed to process letter ${letterPath}:`, error);
+        console.error(`Failed to process letter ${letterFilename}:`, error);
+        // Optional: Move to a 'failed' directory instead of archiving?
+        // For now, we just log the error and return false.
         return false; // Indicate failure
     }
 }
@@ -62,35 +75,40 @@ async function processSingleLetter(letterPath: string, config: Config, profile: 
 async function main() {
     const letterPaths = process.argv.slice(2); // Get file paths from command line arguments
     if (letterPaths.length === 0) {
-        console.log("No letter paths provided to process.");
+        console.log("No letter paths provided to process. Exiting.");
+        // Instead of exiting, maybe find new letters automatically?
+        // For now, relies on external trigger passing paths.
         return;
     }
 
+    console.log(`Received ${letterPaths.length} letters to process.`);
+
     try {
         // Load necessary context once
-        const config = await readConfig();
-        const studentProfile = await readStudentProfile();
-        const mentorProfile = await loadMentorProfile(config.mentorProfile); // Load the selected mentor profile // Needs implementation
+        const studentProfile = await profileManager.readStudentProfile();
+        // Load the specific mentor profile based on config
+        const mentorProfile = await profileManager.loadMentorProfile(config.mentorProfile);
 
         if (!mentorProfile) {
-            throw new Error(`Mentor profile '${config.mentorProfile}' not found.`);
+            // loadMentorProfile logs a warning and returns a default, so this check might not be strictly needed
+            // but kept for clarity.
+            console.error(`Critical error: Mentor profile '${config.mentorProfile}' could not be loaded.`);
+            process.exit(1);
         }
 
-        // TODO: Add logic to handle too many letters (limit, oldest first as per requirements)
-        // For now, process all provided letters sequentially
         let successCount = 0;
         let failureCount = 0;
 
-        // Ensure files are processed oldest first based on filename convention (e.g., timestamp) or mtime
-        // Basic sort assuming filenames might contain sortable date info (e.g., YYYYMMDD-...) 
-        // A more robust approach might use fs.stat to get mtime.
-        const sortedLetterPaths = letterPaths.sort(); 
-        
-        // TODO: Add truncation logic here if needed
-        const lettersToProcess = sortedLetterPaths; // Replace with truncated list if necessary
-
-        for (const letterPath of lettersToProcess) {
-            const success = await processSingleLetter(letterPath, config, studentProfile, mentorProfile);
+        // Process letters one by one
+        for (const letterPath of letterPaths) {
+            // Check if file exists before processing using the new function
+            if (!await files.fileExists(letterPath)) {
+                console.warn(`Letter file not found, skipping: ${letterPath}`);
+                continue;
+            }
+            
+            const currentProfileSnapshot = await profileManager.readStudentProfile(); // Read latest profile for each letter
+            const success = await processSingleLetter(letterPath, config, currentProfileSnapshot, mentorProfile);
             if (success) {
                 successCount++;
             } else {
@@ -98,18 +116,50 @@ async function main() {
             }
         }
 
-        console.log(`\nProcessing complete. Success: ${successCount}, Failures: ${failureCount}`);
+        console.log(`
+Processing complete. Success: ${successCount}, Failures: ${failureCount}`);
+
         if (failureCount > 0) {
-            // Optionally notify user about failures
-            // Maybe create a report file?
             console.error(`${failureCount} letters failed to process.`);
-            process.exit(1); // Exit with error if any letter failed
+            // Consider sending an error email if configured
+            if (config.notifications?.emailErrors) {
+                try {
+                    // Format error email content correctly
+                    const errorEmailContent = {
+                        subject: 'TechDeck Academy - Letter Processing Errors',
+                        html: baseTemplate(`The letter processing script encountered ${failureCount} errors. Please check the server logs for details.`)
+                    };
+                    await email.sendEmail(config, errorEmailContent);
+                } catch (emailError) {
+                    console.error("Failed to send error notification email:", emailError);
+                }
+            }
+            process.exit(1); // Exit with error code if any letter failed
         }
 
     } catch (error) {
-        console.error("Critical error during letter processing:", error);
+        console.error("Critical error during letter processing setup:", error);
+        // Consider sending an error email if configured
+        if (config.notifications?.emailErrors) {
+            try {
+                 // Format critical error email content correctly
+                const criticalErrorEmailContent = {
+                    subject: 'TechDeck Academy - CRITICAL Letter Processing Error',
+                    html: baseTemplate(`The letter processing script failed during setup. Please check the server logs immediately. Error: ${error instanceof Error ? error.message : String(error)}`)
+                };
+                await email.sendEmail(config, criticalErrorEmailContent);
+            } catch (emailError) {
+                console.error("Failed to send critical error notification email:", emailError);
+            }
+        }
         process.exit(1);
     }
 }
 
-main(); 
+// Import baseTemplate if needed for error emails
+import { baseTemplate } from '../utils/email.js';
+
+main().catch(err => {
+    console.error("Unhandled error in main execution:", err);
+    process.exit(1);
+}); 

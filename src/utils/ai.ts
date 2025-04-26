@@ -7,7 +7,8 @@ import type {
   Feedback, 
   Config, 
   Submission, 
-  MentorProfile 
+  MentorProfile,
+  LetterResponse
 } from '../types.js'
 
 // Initialize Gemini AI
@@ -170,4 +171,114 @@ export async function generateFeedback(
   return feedback
 }
 
-// Add more AI utility functions as needed 
+// Add more AI utility functions as needed
+
+export async function generateLetterResponsePrompt(
+  question: string,
+  correspondence: string[], // Array of past messages (optional context)
+  studentProfile: StudentProfile,
+  mentorProfile: MentorProfile,
+  config: Config
+): Promise<string> {
+  const recentMessages = correspondence.slice(-5).join('\n---\n'); // Last 5 messages for context
+
+  return `Act as an AI mentor (${mentorProfile.name}) with the following profile:
+Style: ${mentorProfile.style}
+Tone: ${mentorProfile.tone}
+Expertise: ${mentorProfile.expertise.join(', ')}
+
+A student has sent the following question/letter:
+---
+${question}
+---
+
+Student Context:
+- Current Level: ${studentProfile.currentSkillLevel}/10
+- Strengths: ${studentProfile.strengths.join(', ') || 'N/A'}
+- Weaknesses: ${studentProfile.weaknesses.join(', ') || 'N/A'}
+- Recent Topics: ${studentProfile.recentTopics?.join(', ') || 'N/A'}
+- Learning Goals: ${studentProfile.learningGoals?.join(', ') || 'N/A'}
+- Subject Areas: ${config.subjectAreas.join(', ')}
+
+Recent Correspondence (if any):
+---
+${recentMessages || 'No recent messages'}
+---
+
+Please provide a helpful and supportive response in the mentor's style (${config.emailStyle}). Address the student's question directly. Also, analyze the student's letter for insights into their understanding, challenges, and mindset.
+
+Format your response as a JSON object matching the LetterResponse interface:
+{
+  "content": "<Your detailed response to the student's question, formatted in markdown>",
+  "insights": {
+    "strengths": ["<Identified strength 1>", "<Identified strength 2>"], // Optional: Strengths observed from the letter
+    "weaknesses": ["<Identified weakness 1>"], // Optional: Weaknesses or confusion points observed
+    "topics": ["<Relevant topic 1>", "<Relevant topic 2>"], // Optional: Topics mentioned or implied
+    "sentiment": "<positive|negative|neutral>", // Optional: Overall sentiment of the letter
+    "skillLevelAdjustment": <number>, // Optional: Suggested micro-adjustment to skill level (e.g., 0.1 or -0.1)
+    "flags": ["<flag1>"] // Optional: Flags like 'confused', 'motivated', 'needs_clarification'
+  }
+}
+
+Ensure the 'content' field is formatted appropriately for an email/markdown response. The 'insights' should be based *only* on the student's letter provided.`;
+}
+
+export async function parseLetterResponse(responseText: string): Promise<LetterResponse> {
+  let text = responseText;
+  // Extract JSON from markdown code block if present
+  const jsonRegex = /```json\n([\s\S]*?)\n```/i;
+  const match = text.match(jsonRegex);
+  if (match && match[1]) {
+    text = match[1];
+  }
+
+  try {
+    const parsed = JSON.parse(text) as LetterResponse;
+    // Basic validation (can be expanded)
+    if (!parsed.content || typeof parsed.content !== 'string') {
+      throw new Error('Invalid or missing content field in AI response');
+    }
+    if (!parsed.insights || typeof parsed.insights !== 'object') {
+        // If insights are missing, create an empty object
+        console.warn('Insights object missing in AI response, creating empty one.');
+        parsed.insights = {}; 
+    }
+    return parsed;
+  } catch (error) {
+    console.error('Error parsing AI letter response:', error);
+    console.error('Raw AI response text:', responseText);
+    // Fallback response if parsing fails
+    return {
+      content: `I encountered an issue processing my thoughts on your letter. Could you perhaps rephrase or clarify?
+\nRaw Error Data (for debugging):
+${responseText}`, // Include raw text for debugging
+      insights: {} // Return empty insights on failure
+    };
+  }
+}
+
+export async function generateLetterResponse(
+  question: string,
+  correspondence: string[],
+  studentProfile: StudentProfile,
+  mentorProfile: MentorProfile,
+  config: Config
+): Promise<LetterResponse> {
+  const prompt = await generateLetterResponsePrompt(
+    question,
+    correspondence,
+    studentProfile,
+    mentorProfile,
+    config
+  );
+  
+  console.log('Generating letter response with prompt...'); // Add logging
+  const result = await model.generateContent(prompt);
+  const response = await result.response;
+  const responseText = response.text();
+  console.log('Received raw response from AI.'); // Add logging
+  
+  const parsedResponse = await parseLetterResponse(responseText);
+  console.log('Successfully parsed AI response.'); // Add logging
+  return parsedResponse;
+} 

@@ -7,7 +7,8 @@ import type {
   Feedback, 
   EmailStyle, 
   Config,
-  MentorProfile
+  MentorProfile,
+  LetterResponse
 } from '../types.js'
 
 const resend = new Resend(environment.RESEND_API_KEY)
@@ -92,7 +93,7 @@ Object.assign(renderer, customRenderer)
 marked.use({ renderer })
 
 // Base email template
-const baseTemplate = (content: string) => `
+export const baseTemplate = (content: string) => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -271,6 +272,18 @@ export async function formatWelcomeEmail(
   config: Config,
   mentorProfile: MentorProfile
 ): Promise<{ subject: string; html: string }> {
+  // Determine schedule description
+  let scheduleDescription = 'on a schedule you define'
+  if (config.schedule.challengeFrequency === 'daily') {
+    scheduleDescription = 'on a daily basis'
+  } else if (config.schedule.challengeFrequency === 'threePerWeek') {
+    scheduleDescription = 'on Mondays, Wednesdays, and Fridays'
+  } else if (config.schedule.challengeFrequency === 'weekly') {
+    scheduleDescription = 'every Monday'
+  } else if (config.schedule.challengeFrequency === 'manual') {
+    scheduleDescription = 'manually when you trigger the action'
+  }
+
   const markdown = `
 ${getGreeting(config.emailStyle)}
 
@@ -280,19 +293,18 @@ I'll be your ${mentorProfile.name} mentor for your journey in learning ${config.
 
 ## How This Works
 
-1. **Challenges:** Based on your configuration, you'll receive challenges on ${config.schedule === 'daily' ? 'a daily basis' : config.schedule === 'threePerWeek' ? 'Monday, Wednesday, and Friday' : 'every Monday'}.
+1. **Challenges:** Based on your configuration, you'll receive challenges ${scheduleDescription}.
 
 2. **Submissions:** When you complete a challenge, save your solution in the \`submissions/\` directory with the challenge ID in the filename.
 
-3. **Feedback:** After you submit, I'll review your work and provide feedback based on my teaching style and your progress.
+3. **Feedback:** After you submit, I'll review your work and provide feedback based on my teaching style (${mentorProfile.style}, ${mentorProfile.tone}) and your progress.
 
 4. **Questions:** If you have questions, place a markdown file in the \`letters/to-mentor/\` directory. I'll respond promptly.
 
 ## About Me
 
-${mentorProfile.personality}
-
-My feedback style: ${mentorProfile.feedbackStyle}
+${mentorProfile.description}
+My expertise areas include: ${mentorProfile.expertise.join(', ')}.
 
 ## Next Steps
 
@@ -311,6 +323,38 @@ Looking forward to working with you!
     subject: `Welcome to TechDeck Academy - Your Learning Journey Begins`,
     html: baseTemplate(await markdownToHtml(markdown))
   }
+}
+
+export async function formatLetterResponseEmail(
+  response: LetterResponse,
+  originalQuestion: string,
+  emailStyle: EmailStyle,
+  mentorName: string
+): Promise<{ subject: string; html: string }> {
+  const markdown = `
+${getGreeting(emailStyle)}
+
+I received your letter regarding:
+> ${originalQuestion.split('\n')[0]}... 
+
+Here are my thoughts:
+
+---
+
+${response.content} 
+
+---
+
+Best regards,
+
+${mentorName}
+(Your AI Mentor)
+`;
+
+  return {
+    subject: `Re: Your recent question - Mentor Response`,
+    html: baseTemplate(await markdownToHtml(markdown))
+  };
 }
 
 // Add error handling wrapper for email sending

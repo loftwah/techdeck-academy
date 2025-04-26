@@ -6,9 +6,9 @@ Welcome to the open-source version of **TechDeck Academy**! This project provide
 
 ## ✨ Key Features
 
-*   **AI-Generated Challenges:** Automatically creates coding or technical challenges tailored to the user's configured skill level, topics, and preferences.
+*   **AI-Generated Challenges:** Automatically creates coding or technical challenges tailored to the user's configured skill level, topics, and preferences, influenced by recent interactions (including letters).
 *   **Personalized Feedback:** AI analyzes submissions and provides constructive feedback based on a chosen mentor persona (e.g., technical, supportive).
-*   **AI Mentor Q&A:** Users can ask questions and receive answers from their chosen AI mentor persona.
+*   **AI Mentor Q&A:** Users can ask questions via markdown files (`letters/to-mentor/`) and receive answers from their chosen AI mentor persona. The AI analyzes the letter for insights to update the student's profile.
 *   **Automated Progress Tracking:** Generates weekly, monthly, and quarterly progress reports (digests).
 *   **Configurable Learning:** Users define subject areas, topics, difficulty, mentor style, and communication schedule via `config.ts`.
 *   **GitHub-Based Workflow:** Leverages GitHub Actions for automation and Git for storing challenges, submissions, feedback, and progress.
@@ -19,11 +19,11 @@ Welcome to the open-source version of **TechDeck Academy**! This project provide
 TechDeck Academy operates primarily through a set of GitHub Actions triggered by schedules or repository events (like pushes):
 
 1.  **Configuration (`config.ts`):** The user defines their learning preferences, schedule, and personal details here.
-2.  **Challenge Generation (`send-challenge.yml`):** Based on the schedule in `config.ts`, this action uses Gemini to generate a new challenge relevant to the user's profile (`student-profile.json`) and preferences. The challenge is saved in the `challenges/` directory and emailed to the user via Resend.
-3.  **Submission Processing (`process-submissions.yml`):** When a user pushes a solution to the `submissions/` directory, this action triggers. It uses Gemini, considering the chosen mentor profile (`src/profiles/`), to analyze the submission against the original challenge and generate feedback. Feedback is saved in `feedback/`, the student profile is updated, and an email is sent.
-4.  **Letter Processing (`respond-to-letters.yml`):** When a user pushes a question (`.md` file) to `letters/to-mentor/`, this action uses Gemini and the selected mentor profile to generate a response. The response is saved in `letters/from-mentor/` and emailed. The original letter is archived.
-5.  **Digest Generation (`generate-digests.yml`):** On a schedule (weekly, monthly, quarterly), this action analyzes recent activity (challenges, feedback, scores) and uses Gemini to generate a progress report, saving it in the `progress/` subdirectories.
-6.  **File Rotation (`rotate-files.yml`):** Periodically (e.g., monthly), this action archives older files from `challenges/`, `submissions/`, `feedback/`, and `letters/` into the corresponding `archive/` subdirectories. It also compacts summary and statistics files (`stats.json`, `challenges/summary.json`).
+2.  **Challenge Generation (`send-challenge.yml`):** Based on the schedule in `config.ts`, this action uses Gemini to generate a new challenge relevant to the user's *updated* profile (`student-profile.json`) and preferences. The profile reflects insights gathered from previous feedback and letters. The challenge is saved in the `challenges/` directory and emailed to the user via Resend.
+3.  **Submission Processing (`process-submissions.yml`):** When a user pushes a solution to the `submissions/` directory, this action triggers. It uses Gemini, considering the chosen mentor profile (`src/profiles/`), to analyze the submission against the original challenge and generate feedback. Feedback is saved in `feedback/`, the student profile (`student-profile.json`) is updated with performance insights, and an email is sent.
+4.  **Letter Processing (`respond-to-letters.yml`):** When a user pushes a question (`.md` file) to `letters/to-mentor/`, this action triggers. It uses Gemini and the selected mentor profile to generate a response. Crucially, it also analyzes the user's letter for insights (e.g., confusion, mentioned topics, sentiment) using the `LetterInsights` structure. These insights are used to update `student-profile.json` via `src/utils/profile-manager.ts`. The response is saved in `letters/from-mentor/`, emailed, and the original letter is archived (`archive/letters/to-mentor/`).
+5.  **Digest Generation (`generate-digests.yml`):** On a schedule (weekly, monthly, quarterly), this action analyzes recent activity (challenges, feedback, scores, potentially letter insights) and uses Gemini to generate a progress report, saving it in the `progress/` subdirectories.
+6.  **File Rotation (`rotate-files.yml`):** Periodically (e.g., monthly), this action archives older files from `challenges/`, `submissions/`, `feedback/`, and `letters/` (both `to-mentor` and `from-mentor` are handled by their respective workflows now) into the corresponding `archive/` subdirectories. It also compacts summary and statistics files (`stats.json`, `challenges/summary.json`).
 
 ## 📂 Project Structure
 
@@ -32,24 +32,32 @@ The project is organized as follows:
 ```
 techdeck-academy/
 ├── .github/workflows/     # GitHub Actions for automation
+│   ├── respond-to-letters.yml # Handles Q&A and profile updates from letters
+│   └── ... (other workflows)
 ├── config.ts              # User configuration (IMPORTANT: Edit this first!)
 ├── src/                   # Source code (TypeScript)
-│   ├── types.ts           # Core type definitions
+│   ├── types.ts           # Core type definitions (incl. LetterResponse, LetterInsights)
 │   ├── profiles/          # AI mentor personality definitions
-│   ├── utils/             # Helper functions (AI, email, files, etc.)
-│   └── scripts/           # Manual execution scripts (TBD)
+│   ├── utils/             # Helper functions (AI, email, files, profile-manager, etc.)
+│   │   ├── ai.ts          # Gemini interactions (incl. generateLetterResponse)
+│   │   └── profile-manager.ts # Handles student profile updates (incl. from letters)
+│   └── scripts/           # Scripts executed by workflows
+│       └── process-letters.ts # Core logic for letter handling
 ├── challenges/            # Stores generated challenges
 ├── submissions/           # User pushes solutions here
 ├── feedback/              # Stores AI-generated feedback
 ├── letters/               # Stores user questions and mentor responses
-│   ├── to-mentor/         # User pushes questions here
-│   └── from-mentor/       # AI saves responses here
+│   ├── to-mentor/         # User pushes questions here (e.g., `question-about-loops.md`)
+│   └── from-mentor/       # AI saves responses here (e.g., `question-about-loops-response.md`)
 ├── archive/               # Stores old data after rotation
+│   └── letters/           # Archived letters
+│       ├── to-mentor/     # Archived original questions
+│       └── from-mentor/   # Archived responses (optional, TBD)
 ├── progress/              # Stores progress digests and stats
 │   ├── stats.json         # Raw statistics
 │   ├── roadmap.md         # User-managed learning roadmap
 │   └── suggested-roadmap.md # AI-suggested roadmap updates
-├── student-profile.json   # AI's persistent notes about the student
+├── student-profile.json   # AI's persistent notes about the student (updated by feedback AND letters)
 ├── structure.md           # Detailed documentation of structure and pseudocode
 ├── README.md              # This file
 └── LICENSE                # Project License

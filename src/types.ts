@@ -1,14 +1,17 @@
+import type { PathLike } from 'node:fs';
+
 // Mentor and Email Types
 export interface MentorProfile {
   name: string;
-  personality: string;
-  feedbackStyle: string;
-  challengeStyle: string;
-  responseStyle: string;
+  description: string;
+  style: string;
+  tone: string;
+  expertise: string[];
+  personaPrompt: string;
 }
 
-export type EmailStyle = 'casual' | 'formal' | 'technical'
-export type Schedule = 'daily' | 'threePerWeek' | 'weekly'
+export type EmailStyle = 'casual' | 'formal' | 'technical' | 'supportive'
+export type Schedule = 'daily' | 'threePerWeek' | 'weekly' | 'manual'
 export type SubjectArea = 'programming' | 'devops' | 'networking' | 'security' | 'cloud' | 'databases'
 
 // Core Types
@@ -42,15 +45,19 @@ export interface Feedback {
 }
 
 export interface StudentProfile {
-  strengths: string[]
-  weaknesses: string[]
-  currentSkillLevel: number
-  recommendedTopics: string[]
-  completedChallenges: number
-  averageScore: number
-  topicProgress: Record<string, number>
-  notes: string
-  lastUpdated: string
+  userId: string;
+  currentSkillLevel: number;
+  strengths: string[];
+  weaknesses: string[];
+  topicProgress: Record<string, number>;
+  recentTopics?: string[];
+  recommendedTopics?: string[];
+  learningGoals?: string[];
+  preferredTopics: string[];
+  completedChallenges: number;
+  averageScore?: number;
+  notes: string;
+  lastUpdated: string;
 }
 
 // Configuration Types
@@ -67,19 +74,30 @@ export interface Config {
 
   // Learning preferences
   subjectAreas: SubjectArea[]
-  topics: Record<string, Record<string, TopicConfig>>; // New topics structure
+  topics: Record<string, Record<string, { currentLevel: number; lastTested: string }>>; // Category -> Topic -> Details
   difficulty: number // 1-10
   sessionLength: number // minutes
 
   // Style preferences
-  mentorProfile: string // Use string type here for now as profile name is loaded dynamically
+  mentorProfile: string // filename in src/profiles/
   emailStyle: EmailStyle
 
   // Schedule
-  schedule: Schedule
+  schedule: {
+    challengeFrequency: Schedule
+    digestFrequency: 'weekly' | 'monthly' | 'quarterly'
+  }
 
   // Archive settings
-  archive: ArchiveConfig
+  archive: {
+    enabled: boolean
+    maxAgeDays: number // Rotate files older than this
+  }
+
+  notifications: {
+    emailMentions: boolean
+    emailErrors: boolean
+  }
 }
 
 export interface ArchiveConfig {
@@ -172,4 +190,30 @@ interface ArchivedChallenge {
   title: string
   createdAt: string
   archivedAt: string
+}
+
+export interface ProgressReport {
+  period: 'weekly' | 'monthly' | 'quarterly';
+  startDate: string;
+  endDate: string;
+  summary: string;
+  strengths: string[];
+  areasForImprovement: string[];
+  suggestedNextSteps: string[];
+  challengesCompleted: number;
+  averageScore?: number; // Optional, might not always be available
+}
+
+export interface LetterResponse {
+  content: string;
+  insights: LetterInsights;
+}
+
+export interface LetterInsights {
+  strengths?: string[]; // Optional as insights might not always be present
+  weaknesses?: string[]; // Optional
+  topics?: string[]; // Optional
+  sentiment?: 'positive' | 'negative' | 'neutral'; // Optional analysis
+  skillLevelAdjustment?: number; // e.g., +0.1 or -0.2 based on letter content
+  flags?: string[]; // e.g., 'confused', 'motivated', 'needs_clarification'
 } 

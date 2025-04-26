@@ -140,3 +140,37 @@ Once you provide answers to these questions, I can give you a more tailored resp
 └── tsconfig.json
 24 directories, 20 files
 (╯°□°)╯︵ ┻━┻ ➜ techdeck-academy git:(main✗)                                                  15:16:55
+
+Email Triggers:
+
+Initial Setup: Welcome email after first setup
+User Actions:
+
+Challenge emails sent when a challenge is generated (according to schedule)
+Feedback emails when a submission is processed
+Response emails when the user writes a letter to the mentor
+
+
+Progress Reports: These could be time-based, but should be intelligent about content
+
+Dormant Behavior:
+If a user does nothing:
+
+The challenge workflow would still check according to the schedule, but wouldn't generate a new challenge if the previous one isn't completed
+No submission emails would be sent (since there are no submissions)
+No letter response emails would be sent (since there are no letters)
+Progress reports would either:
+
+Note that no activity occurred ("No challenges were completed this week")
+Or better yet, be skipped entirely if there's nothing to report
+
+
+
+This approach respects the user's pace and avoids email fatigue. The system stays ready but dormant until the user engages with it.
+For implementation, this means:
+
+Challenge generation should check if there's an outstanding challenge before creating a new one
+Digest generation should check for activity in the reporting period before sending
+Email sending functions should have clear conditional logic
+
+This way, users won't feel pressured or annoyed by a system sending them reminders about activities they haven't chosen to engage with.DLDoesn't the schedule make sense here? If they aren't set up properly etc. This can't be clunky.A challenge is only sent IF the intro email has been sent and the user has responded? Maybe there should be some questions about the user and who they are and what they want? This gives us a chance to store info about them that we should use in things.These progress reports should definitely be time based? Weekly, monthly and quarterly?I feel like a LOT of this stuff should be clear already.

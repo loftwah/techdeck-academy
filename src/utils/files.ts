@@ -110,17 +110,22 @@ export async function readStudentProfile(): Promise<StudentProfile> {
     return JSON.parse(content) as StudentProfile
   } catch (error) {
     // Return default profile if file doesn't exist
+    console.warn('student-profile.json not found, returning default profile.');
     return {
+      userId: 'unknown-user', // Add default userId
       strengths: [],
       weaknesses: [],
       currentSkillLevel: 1,
+      topicProgress: {},
       recommendedTopics: [],
+      preferredTopics: [], // Add default preferredTopics
+      recentTopics: [],
+      learningGoals: [],
       completedChallenges: 0,
       averageScore: 0,
-      topicProgress: {},
-      notes: 'New student profile',
+      notes: 'New student profile initialized (file not found).',
       lastUpdated: new Date().toISOString()
-    }
+    } as StudentProfile; // Assert type
   }
 }
 
@@ -169,6 +174,35 @@ export async function isFileOlderThan(filepath: string, days: number): Promise<b
   } catch {
     return false
   }
+}
+
+// Generic file existence check
+export async function fileExists(filepath: string): Promise<boolean> {
+  try {
+    await fs.access(filepath); // Check if file is accessible
+    return true;
+  } catch (error) {
+    // If error code is ENOENT (File not found), return false
+    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return false;
+    }
+    // Re-throw other errors (e.g., permissions)
+    throw error;
+  }
+}
+
+// Generic archive function
+export async function archiveFile(sourcePath: string, targetArchiveBaseDir: string): Promise<void> {
+  const filename = path.basename(sourcePath);
+  const monthDir = getMonthDir(); // Use existing helper for YYYY-MM subdirectory
+  const archiveDirPath = path.join(targetArchiveBaseDir, monthDir);
+  const targetPath = path.join(archiveDirPath, filename);
+
+  await ensureDirectories(); // Ensure base directories exist first
+  await fs.mkdir(archiveDirPath, { recursive: true }); // Ensure the specific month archive dir exists
+  
+  console.log(`Archiving ${sourcePath} to ${targetPath}`); // Add logging
+  await fs.rename(sourcePath, targetPath); // Move the file
 }
 
 // Export paths for use in other modules
