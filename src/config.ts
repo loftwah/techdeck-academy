@@ -13,8 +13,8 @@ const env = envSchema.parse(process.env)
 // Default configuration
 export const config: Config = {
   // Personal information (should be overridden by user)
-  userEmail: 'user@example.com',
-  githubUsername: 'username',
+  userEmail: 'dean@deanlofts.xyz',
+  githubUsername: 'loftwah',
 
   // Learning preferences
   subjectAreas: ['programming', 'devops'],
