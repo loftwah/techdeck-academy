@@ -15,7 +15,7 @@
     "reset": "npm run build && node dist/scripts/reset-progress.js"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.2.0",
+    "@google/generative-ai": "^0.24.0",
     "@types/marked": "^5.0.2",
     "marked": "^15.0.11",
     "resend": "^3.0.0",
