@@ -109,24 +109,8 @@ async function main() {
                 continue;
             }
             
-            // --- Special handling for introduction.md ---
-            if (letterFilename === 'introduction.md') {
-                console.log('Found introduction.md, checking student progress...');
-                try {
-                    const studentProfile = await profileManager.readStudentProfile();
-                    if (studentProfile.completedChallenges > 0) {
-                        console.log('Student has completed challenges, archiving introduction.md');
-                        await files.archiveFile(letterPath, ARCHIVE_LETTERS_TO_MENTOR_DIR);
-                        // Consider adding success/failure counts here too if needed
-                    } else {
-                        console.log('Student has not completed challenges, leaving introduction.md for send-challenge workflow.');
-                    }
-                } catch (error) {
-                    console.error(`Error handling introduction.md (${letterPath}):`, error);
-                    failureCount++; // Count as failure if profile read or archive fails
-                }
-                continue; // Skip normal letter processing for introduction.md
-            }
+            // --- Special handling for introduction.md --- REMOVED
+            // if (letterFilename === 'introduction.md') { ... }
             // --- End special handling ---
 
             // Pass aiMemory instead of profile snapshot

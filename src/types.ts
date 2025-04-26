@@ -71,6 +71,7 @@ export interface Config {
   difficulty: number // 1-10
   sessionLength: number // minutes
   preferredChallengeTypes?: ChallengeType[]; // Added optional array
+  introductionSubmitted?: boolean; // Track if intro is done
 
   // Style preferences
   mentorProfile: string // filename in src/profiles/
