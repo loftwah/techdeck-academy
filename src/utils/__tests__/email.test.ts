@@ -20,28 +20,32 @@ describe('Email Utilities', () => {
   const mockConfig: Config = {
     userEmail: 'test@example.com',
     githubUsername: 'testuser',
-    subjectAreas: ['programming', 'devops', 'networking', 'security', 'cloud', 'databases'] as SubjectArea[],
+    subjectAreas: ['programming', 'devops'] as SubjectArea[],
     topics: {
-      programming: ['typescript', 'testing'],
-      devops: ['docker', 'github-actions'],
-      networking: ['tcp-ip', 'dns'],
-      security: ['encryption', 'authentication'],
-      cloud: ['aws', 'azure'],
-      databases: ['sql', 'nosql']
-    } as Record<SubjectArea, string[]>,
+      programming: {
+        'typescript': { currentLevel: 3, lastTested: '' },
+        'testing': { currentLevel: 2, lastTested: '' }
+      },
+      devops: {
+        'docker': { currentLevel: 1, lastTested: '' },
+        'github-actions': { currentLevel: 4, lastTested: '' }
+      }
+    },
     difficulty: 5,
     sessionLength: 60,
-    mentorProfile: 'technical' as MentorProfile,
+    mentorProfile: 'linus',
     emailStyle: 'technical' as EmailStyle,
-    schedule: 'weekly' as Schedule,
+    schedule: {
+      challengeFrequency: 'weekly' as Schedule,
+      digestFrequency: 'weekly'
+    },
     archive: {
       enabled: true,
-      challengeRetentionDays: 30,
-      submissionRetentionDays: 30,
-      letterRetentionDays: 30,
-      detailedStatsRetentionDays: 90,
-      compactSummariesAutomatically: true,
-      maxActiveFilesPerType: 100
+      maxAgeDays: 90
+    },
+    notifications: {
+      emailMentions: true,
+      emailErrors: true
     }
   }
 
@@ -130,27 +134,29 @@ describe('Email Utilities', () => {
   })
 
   describe('sendEmailWithRetry', () => {
-    it.skip('should retry sending email on failure', async () => {
-      // Remove or skip tests that rely on mocking failures
-    })
-
-    it.skip('should throw error after max retries', async () => {
-      // Remove or skip tests that rely on mocking failures
-    })
+    // REMOVED skipped tests that previously relied on mocking network failures.
+    // Testing retry logic reliably requires mocking, which is being avoided.
+    /*
+    it.skip('should retry sending email on failure', async () => { ... });
+    it.skip('should throw error after max retries', async () => { ... });
+    */
     
-    it('should eventually send an email successfully', async () => {
+    // This test remains but might be redundant if sendEmail test passes.
+    // It primarily tests if the retry wrapper *eventually* calls sendEmail successfully.
+    it('should eventually send an email successfully via the retry wrapper', async () => {
       // Ensure mockConfig.userEmail is valid if running this test
       const content = {
         subject: 'Live Test - sendEmailWithRetry',
-        html: '<p>This email was sent by a live test.</p>'
-      }
+        html: '<p>This email was sent by a live test (via retry wrapper).</p>'
+      };
       // This will call the real Resend API via sendEmail
       await expect(emailUtils.sendEmailWithRetry(mockConfig, content))
-        .resolves.toBeUndefined(); // Or check for a specific success indicator if applicable
-    }, 30000) // Increase timeout for network calls
+        .resolves.toBeUndefined();
+    }, 30000); // Increase timeout for network calls
   })
 
   describe('sendEmail', () => {
+    // Note: These tests use the LIVE Resend API and require valid credentials in .env
     it('should validate email content before sending', async () => {
       await expect(emailUtils.sendEmail(mockConfig, {
         subject: '',
