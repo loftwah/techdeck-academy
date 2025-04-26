@@ -7,3 +7,5 @@ The following environment variables are required:
 - RESEND_API_KEY
 
 These are both in `.env`
+
+These are both set up correctly in GitHub Secrets.
