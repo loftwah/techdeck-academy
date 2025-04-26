@@ -52,7 +52,7 @@ export const config: Config = {
 
   // Style preferences
   mentorProfile: 'linus',
-  emailStyle: 'casual',
+  emailStyle: 'technical',
 
   // Schedule
   schedule: {
