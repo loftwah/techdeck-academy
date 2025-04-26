@@ -172,5 +172,23 @@ export async function archiveFile(sourcePath: string, targetArchiveBaseDir: stri
   await fs.rename(sourcePath, targetPath); // Move the file
 }
 
+// Specific archive function for introduction.md
+export async function archiveIntroduction(): Promise<void> {
+  const sourcePath = path.join(PATHS.letters.toMentor, 'introduction.md');
+  const targetArchiveBaseDir = PATHS.archive.letters; // Archive with other letters
+
+  try {
+    if (await fileExists(sourcePath)) {
+      await archiveFile(sourcePath, targetArchiveBaseDir);
+      console.log(`Archived introduction.md successfully.`);
+    } else {
+      console.log('introduction.md not found in to-mentor, skipping archive.');
+    }
+  } catch (error) {
+    console.error(`Error archiving introduction.md: ${error}`);
+    // Decide if we should re-throw or just log
+  }
+}
+
 // Export paths for use in other modules
 export { PATHS } 

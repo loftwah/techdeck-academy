@@ -149,5 +149,7 @@ export {
   generateChallenge,
   processSubmission,
   archiveOldContent,
-  config
+  config,
+  files,
+  profile
 } 
