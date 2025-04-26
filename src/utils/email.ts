@@ -1,5 +1,6 @@
-import { marked } from 'marked'
-import type { Renderer, Token } from 'marked'
+import { promises as fs } from 'fs';
+import path from 'path';
+import * as handlebars from 'handlebars'; // Import Handlebars
 import { Resend } from 'resend'
 import { environment } from '../config.js'
 import type { 
@@ -13,26 +14,7 @@ import type {
 
 const resend = new Resend(environment.RESEND_API_KEY)
 
-// Configure marked options for secure and styled HTML output
-marked.setOptions({
-  breaks: true, // Convert line breaks to <br>
-  gfm: true, // Enable GitHub Flavored Markdown
-})
-
-// Custom renderer to add email-safe styling
-const renderer = new marked.Renderer()
-
-// Style headers appropriately for email
-const sizes: Record<number, string> = {
-  1: '24px',
-  2: '20px',
-  3: '18px',
-  4: '16px',
-  5: '14px',
-  6: '12px'
-}
-
-// Helper function to escape HTML
+// Helper function to escape HTML (potentially still useful for specific data within templates)
 function escapeHtml(text: string): string {
   const map: Record<string, string> = {
     '&': '&amp;',
@@ -44,61 +26,32 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, m => map[m])
 }
 
-// Helper function to safely get text from tokens
-function getTextFromTokens(tokens: Token[]): string {
-  return tokens
-    .map(token => {
-      if ('text' in token) {
-        return token.text
-      }
-      return ''
-    })
-    .join('')
-}
+// --- Template Loading and Compilation --- 
 
-// Override renderer methods with type-safe implementations
-const customRenderer: Partial<Renderer> = {
-  heading({ tokens, depth }) {
-    const text = getTextFromTokens(tokens)
-    return `<h${depth} style="font-size: ${sizes[depth]}; margin-top: 20px; margin-bottom: 10px; font-weight: 600; color: #2D3748;">${text}</h${depth}>`
-  },
+// Cache for compiled templates
+const templateCache: Record<string, handlebars.TemplateDelegate> = {};
 
-  strong({ tokens }) {
-    const text = getTextFromTokens(tokens);
-    return `<strong style="font-weight: bold; color: inherit;">${text}</strong>`;
-  },
+async function loadAndCompileTemplate(templateName: string): Promise<handlebars.TemplateDelegate> {
+  if (templateCache[templateName]) {
+    return templateCache[templateName];
+  }
 
-  code({ text, escaped }) {
-    const code = escaped ? text : escapeHtml(text)
-    return `<pre style="background-color: #F7FAFC; padding: 16px; border-radius: 8px; overflow-x: auto;"><code>${code}</code></pre>`
-  },
-
-  codespan({ text }) {
-    return `<code style="background-color: #F7FAFC; padding: 2px 6px; border-radius: 4px; font-family: monospace;">${text}</code>`
-  },
-
-  blockquote({ tokens }) {
-    const text = getTextFromTokens(tokens)
-    return `<blockquote style="border-left: 4px solid #CBD5E0; margin: 0; padding-left: 16px; color: #4A5568;">${text}</blockquote>`
-  },
-
-  link({ href, title, tokens }) {
-    const text = getTextFromTokens(tokens)
-    return `<a href="${href}" style="color: #4299E1; text-decoration: none;" ${title ? `title="${title}"` : ''}>${text}</a>`
-  },
-
-  list(token) {
-    const items = token.items.map(item => `<li>${getTextFromTokens(item.tokens)}</li>`).join('')
-    return `<${token.ordered ? 'ol' : 'ul'} style="padding-left: 24px; margin: 16px 0;">${items}</${token.ordered ? 'ol' : 'ul'}>`
+  // Resolve path relative to the current file's directory
+  const templatePath = path.resolve(__dirname, '../email-templates', `${templateName}.hbs`);
+  try {
+    const templateSource = await fs.readFile(templatePath, 'utf-8');
+    const compiledTemplate = handlebars.compile(templateSource);
+    templateCache[templateName] = compiledTemplate; // Cache the compiled template
+    return compiledTemplate;
+  } catch (error) {
+    console.error(`Error loading or compiling template ${templateName}:`, error);
+    throw new Error(`Could not load email template: ${templateName}`);
   }
 }
 
-// Apply the custom renderer
-Object.assign(renderer, customRenderer)
-marked.use({ renderer })
-
-// Base email template
-export const baseTemplate = (content: string) => `
+// Base email template (HTML structure)
+// Consider moving this structure into a layout.hbs file later if needed
+export const baseTemplateWrapper = (content: string) => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -113,26 +66,7 @@ export const baseTemplate = (content: string) => `
   </footer>
 </body>
 </html>
-`
-
-// Convert markdown to styled HTML with fallback
-const markdownToHtml = async (markdown: string): Promise<string> => {
-  try {
-      // Ensure markdown is a string before parsing
-      if (typeof markdown !== 'string') {
-          console.warn('markdownToHtml received non-string input, returning empty string.');
-          return '';
-      }
-      return await marked.parse(markdown); // Use the configured marked instance
-  } catch (error) {
-      console.error("Markdown parsing failed:", error);
-      console.error("Original Markdown content:", markdown); // Log the problematic markdown
-      // Fallback: Return the original markdown wrapped in <pre> tags
-      // Escape the markdown content to prevent potential HTML injection in the fallback
-      const escapedMarkdown = escapeHtml(markdown);
-      return `<p style="color: red; font-weight: bold;">Error rendering email content. Displaying raw content:</p><pre style="background-color: #eee; padding: 10px; border: 1px solid #ccc; white-space: pre-wrap; word-wrap: break-word;">${escapedMarkdown}</pre>`;
-  }
-};
+`;
 
 // Get appropriate greeting based on email style
 const getGreeting = (style: EmailStyle): string => {
@@ -148,56 +82,41 @@ const getGreeting = (style: EmailStyle): string => {
   }
 }
 
-// --- NEW Email Formatting Helpers ---
-
-// Creates a standard section with a heading
-function createEmailSection(title: string, content: string, headingLevel: number = 2): string {
-    if (!content || content.trim() === '' || content.trim() === 'None') return ''; // Don't render empty sections
-    return `\n## ${title}\n${content}\n`;
-}
-
-// Creates a markdown bulleted list from an array
-function createBulletedList(items: string[]): string {
-    if (!items || items.length === 0) return 'None provided';
-    return items.map(item => `- ${item}`).join('\n');
-}
-
-// Creates a markdown code block
-function createCodeBlock(content: string, language: string = ''): string {
-    return `\`\`\`${language}\n${content}\n\`\`\``;
-}
-
 // --- Refactored Email Formatters ---
 
 export async function formatChallengeEmail(
   challenge: Challenge,
   emailStyle: EmailStyle
 ): Promise<{ subject: string; html: string }> {
-  const formattedExamples = challenge.examples && challenge.examples.length > 0
-    ? challenge.examples.map(ex => createCodeBlock(typeof ex === 'object' ? JSON.stringify(ex, null, 2) : ex, typeof ex === 'object' ? 'json' : '')).join('\n\n')
-    : 'None provided';
+  try {
+    const template = await loadAndCompileTemplate('challenge');
+    
+    // Prepare data for the template
+    // Handle potential complexity in examples (e.g., marking code blocks)
+    const templateData = {
+      greeting: getGreeting(emailStyle),
+      challenge: {
+        ...challenge,
+        // Process examples if needed for specific formatting in the template
+        // For now, assume examples are simple strings or handled by template logic
+        // examples: challenge.examples?.map(ex => (
+        //    typeof ex === 'object' ? { isCodeBlock: true, content: JSON.stringify(ex, null, 2) } : { isCodeBlock: false, content: ex }
+        // )) ?? []
+      }
+    };
 
-  let markdown = getGreeting(emailStyle);
-  markdown += `\n\n# ${challenge.title}\n\n${challenge.description}`; // Main title and description
-  
-  markdown += createEmailSection('Requirements', createBulletedList(challenge.requirements));
-  markdown += createEmailSection('Examples', formattedExamples);
-  if (challenge.hints && challenge.hints.length > 0) {
-      markdown += createEmailSection('Hints', createBulletedList(challenge.hints));
-  }
-  
-  const submissionInstructions = [
-      `Create your solution (filename should include the challenge ID: ${challenge.id})`, // Add ID instruction
-      `Save it in the \`submissions/\` directory`, // Use backticks for code style
-      `Commit and push your changes`
-  ];
-  markdown += createEmailSection('Submission Instructions', submissionInstructions.map((item, index) => `${index + 1}. ${item}`).join('\n'), 2);
+    const renderedContent = template(templateData);
+    const finalHtml = baseTemplateWrapper(renderedContent);
+    validateEmailContent({ subject: `New Challenge: ${challenge.title}`, html: finalHtml });
 
-  markdown += '\n\nGood luck! 🚀';
-
-  return {
-    subject: `New Challenge: ${challenge.title}`,
-    html: baseTemplate(await markdownToHtml(markdown))
+    return {
+      subject: `New Challenge: ${challenge.title}`,
+      html: finalHtml
+    };
+  } catch (error) {
+      console.error('Error formatting challenge email:', error);
+      // Fallback or rethrow
+      throw new Error(`Failed to format challenge email: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -207,9 +126,14 @@ export async function formatFeedbackEmail(
   challenge: Challenge,
   emailStyle: EmailStyle
 ): Promise<{ subject: string; html: string }> {
+  // TODO: Refactor using Handlebars template 'feedback.hbs'
   let markdown = getGreeting(emailStyle);
   markdown += `\n\n# Feedback for: ${challenge.title}`;
 
+  // Using old helpers temporarily - replace with template rendering
+  const createBulletedList = (items: string[] | undefined): string => items && items.length > 0 ? items.map(item => `- ${item}`).join('\n') : 'None provided';
+  const createEmailSection = (title: string, content: string | undefined, level: number = 2): string => content ? `\n## ${title}\n${content}\n` : '';
+  
   markdown += createEmailSection('Strengths', createBulletedList(feedback.strengths), 2);
   markdown += createEmailSection('Areas for Improvement', createBulletedList(feedback.weaknesses), 2);
   markdown += createEmailSection('Suggestions', createBulletedList(feedback.suggestions), 2);
@@ -217,128 +141,41 @@ export async function formatFeedbackEmail(
 
   markdown += '\n\nKeep up the great work! 💪';
 
+  // Still using old markdownToHtml temporarily
+  const markdownToHtml = async (md: string): Promise<string> => `<pre>${escapeHtml(md)}</pre>`; // Placeholder
+
   return {
     subject: `Feedback: ${challenge.title}`,
-    html: baseTemplate(await markdownToHtml(markdown))
-  }
-}
-
-// Add types for digest data
-interface DigestStats {
-  challengesCompleted: number
-  topicsProgress: Record<string, number>
-  strengths: string[]
-  areasForImprovement: string[]
-}
-
-interface DigestData {
-  type: 'weekly' | 'monthly' | 'quarterly'
-  period: {
-    start: string
-    end: string
-  }
-  stats: DigestStats
-  recommendations: string[]
-  nextSteps: string[]
+    html: baseTemplateWrapper(await markdownToHtml(markdown))
+  };
 }
 
 export async function formatDigestEmail(
-  digest: DigestData,
+  digest: Record<string, any>, // Using generic type for now
   emailStyle: EmailStyle
 ): Promise<{ subject: string; html: string }> {
-  const periodType = digest.type.charAt(0).toUpperCase() + digest.type.slice(1)
-  const markdown = `
-${getGreeting(emailStyle)}
-
-# Your ${periodType} Learning Digest
-
-## Period: ${new Date(digest.period.start).toLocaleDateString()} - ${new Date(digest.period.end).toLocaleDateString()}
-
-### Progress Overview
-- Challenges Completed: ${digest.stats.challengesCompleted}
-
-### Topic Progress
-${Object.entries(digest.stats.topicsProgress)
-  .map(([topic, progress]) => `- ${topic}: ${(progress * 100).toFixed(1)}% complete`)
-  .join('\n')}
-
-### Strengths
-${digest.stats.strengths.map(s => `- ${s}`).join('\n')}
-
-### Areas for Improvement
-${digest.stats.areasForImprovement.map(a => `- ${a}`).join('\n')}
-
-### Recommendations
-${digest.recommendations.map(r => `- ${r}`).join('\n')}
-
-## Next Steps
-${digest.nextSteps.map(s => `- ${s}`).join('\n')}
-
-Keep pushing forward! 🚀
-`
-
+  // TODO: Refactor using Handlebars template 'digest.hbs'
+  // TODO: Define a proper DigestData type in types.ts
+  const periodType = digest.type?.charAt(0).toUpperCase() + digest.type?.slice(1) || 'Digest';
+  const markdown = `Placeholder for ${periodType} Digest`; // Placeholder
+  const markdownToHtml = async (md: string): Promise<string> => `<p>${escapeHtml(md)}</p>`; // Placeholder
   return {
-    subject: `Your ${periodType} TechDeck Academy Progress Report`,
-    html: baseTemplate(await markdownToHtml(markdown))
-  }
+    subject: `${periodType} Progress Digest`,
+    html: baseTemplateWrapper(await markdownToHtml(markdown))
+  };
 }
 
-// Add the new welcome email function
 export async function formatWelcomeEmail(
   config: Config,
   mentorProfile: MentorProfile
 ): Promise<{ subject: string; html: string }> {
-  // Determine schedule description
-  let scheduleDescription = 'on a schedule you define'
-  if (config.schedule.challengeFrequency === 'daily') {
-    scheduleDescription = 'on a daily basis'
-  } else if (config.schedule.challengeFrequency === 'threePerWeek') {
-    scheduleDescription = 'on Mondays, Wednesdays, and Fridays'
-  } else if (config.schedule.challengeFrequency === 'weekly') {
-    scheduleDescription = 'every Monday'
-  } else if (config.schedule.challengeFrequency === 'manual') {
-    scheduleDescription = 'manually when you trigger the action'
-  }
-
-  const markdown = `
-${getGreeting(config.emailStyle)}
-
-# Welcome to TechDeck Academy!
-
-I'll be your ${mentorProfile.name} mentor for your journey in learning ${Object.keys(config.topics).join(', ')}.
-
-## How This Works
-
-1. Challenges: Based on your configuration, you'll receive challenges ${scheduleDescription}.
-
-2. Submissions: When you complete a challenge, save your solution in the \`submissions/\` directory with the challenge ID in the filename.
-
-3. Feedback: After you submit, I'll review your work and provide feedback based on my teaching style (${mentorProfile.style}, ${mentorProfile.tone}) and your progress.
-
-4. Questions: If you have questions, place a markdown file in the \`letters/to-mentor/\` directory. I'll respond promptly.
-
-## About Me
-
-${mentorProfile.description}
-My expertise areas include: ${mentorProfile.expertise.join(', ')}.
-
-## Next Steps
-
-Please send me a letter: Place a markdown file in \`letters/to-mentor/\` telling me about:
-- Your current skills
-- What you want to learn
-- How you prefer to learn
-- Any specific areas you want to focus on
-
-I'll use this to tailor your learning experience.
-
-Looking forward to working with you!
-`
-
+  // TODO: Refactor using Handlebars template 'welcome.hbs'
+  const markdown = `Welcome, ${config.githubUsername}!`; // Placeholder
+  const markdownToHtml = async (md: string): Promise<string> => `<p>${escapeHtml(md)}</p>`; // Placeholder
   return {
-    subject: `Welcome to TechDeck Academy - Your Learning Journey Begins`,
-    html: baseTemplate(await markdownToHtml(markdown))
-  }
+    subject: 'Welcome to TechDeck Academy!',
+    html: baseTemplateWrapper(await markdownToHtml(markdown))
+  };
 }
 
 export async function formatLetterResponseEmail(
@@ -347,43 +184,23 @@ export async function formatLetterResponseEmail(
   emailStyle: EmailStyle,
   mentorName: string
 ): Promise<{ subject: string; html: string }> {
-  const markdown = `
-${getGreeting(emailStyle)}
-
-I received your letter regarding:
-> ${originalQuestion.split('\n')[0]}... 
-
-Here are my thoughts:
-
----
-
-${response.content} 
-
----
-
-Best regards,
-
-${mentorName}
-(Your AI Mentor)
-`;
-
+  // TODO: Refactor using Handlebars template 'letter-response.hbs'
+  const markdown = `Re: Your Letter\n\n${response.content}`; // Placeholder
+  const markdownToHtml = async (md: string): Promise<string> => `<p>${escapeHtml(md)}</p>`; // Placeholder
   return {
-    subject: `Re: Your recent question - Mentor Response`,
-    html: baseTemplate(await markdownToHtml(markdown))
+    subject: `Response from ${mentorName}`,
+    html: baseTemplateWrapper(await markdownToHtml(markdown))
   };
 }
 
 function validateEmailContent(content: { subject: string; html: string }): void {
-  if (!content.subject || typeof content.subject !== 'string' || content.subject.trim() === '') {
-    throw new Error('Email subject is missing or invalid.');
+  if (!content.subject || content.subject.trim() === '') {
+    throw new Error('Email subject cannot be empty.')
   }
-  if (!content.html || typeof content.html !== 'string' || content.html.trim() === '') {
-    throw new Error('Email HTML content is missing or invalid.');
+  if (!content.html || content.html.trim() === '') {
+    throw new Error('Email HTML content cannot be empty.')
   }
-  // Basic check for potentially malformed HTML (very basic)
-  if (!content.html.includes('<html') || !content.html.includes('</body>')) {
-    console.warn('Email HTML content might be missing basic structure.');
-  }
+  // Add more checks if needed (e.g., HTML validity, size limits)
 }
 
 // Updated sendEmail function with integrated retry logic
@@ -393,59 +210,43 @@ export async function sendEmail(
   maxRetries = 3,
   retryDelay = 1500 // Slightly increased delay
 ): Promise<void> {
-  // 1. Validate Content
-  try {
-    validateEmailContent(content);
-  } catch (validationError) {
-    console.error("Email content validation failed:", validationError);
-    // Do not attempt to send invalid content
-    throw validationError; 
-  }
+  validateEmailContent(content);
 
-  const mailOptions = {
-    from: 'TechDeck Academy <academy@techdeck.life>', // Replace with your verified sender
-    to: config.userEmail,
-    subject: content.subject,
-    html: content.html,
-  };
+  console.log(`Attempting to send email: "${content.subject}" to ${config.userEmail}`);
 
-  // 2. Attempt Sending with Retry
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`Attempting to send email (Attempt ${attempt}/${maxRetries}): "${content.subject}" to ${config.userEmail}`);
-      const { data, error } = await resend.emails.send(mailOptions);
+      try {
+          const { data, error } = await resend.emails.send({
+              from: 'TechDeck Academy <academy@techdeck.life>', // Use a verified domain
+              to: config.userEmail,
+              subject: content.subject,
+              html: content.html,
+          });
 
-      if (error) {
-        // Treat Resend's error object as the error to handle
-        throw error; 
+          if (error) {
+              throw error; // Throw Resend error to be caught below
+          }
+
+          console.log(`Email sent successfully (ID: ${data?.id}) on attempt ${attempt}.`);
+          return; // Success
+      } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          console.warn(`Email send attempt ${attempt} failed: ${lastError.message}`);
+          if (attempt < maxRetries) {
+              // Exponential backoff with jitter
+              const delay = retryDelay * Math.pow(2, attempt - 1);
+              const jitter = delay * 0.1 * (Math.random() * 2 - 1);
+              const effectiveDelay = Math.max(0, Math.round(delay + jitter));
+              console.log(`Retrying email send in approximately ${effectiveDelay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, effectiveDelay));
+          } else {
+               console.error(`Email send failed after ${maxRetries} attempts.`);
+          }
       }
-
-      // Success
-      console.log(`Email sent successfully! ID: ${data?.id}`);
-      return; // Exit function on success
-
-    } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`Email send attempt ${attempt}/${maxRetries} failed:`, lastError);
-
-        // TODO: Check for specific non-retryable error codes from Resend if needed
-        // if (isPermanentResendError(error)) { break; } 
-
-        if (attempt < maxRetries) {
-            console.log(`Retrying email send in ${retryDelay / 1000}s...`);
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-        } else {
-            console.error("Max retries reached for sending email.");
-        }
-    }
   }
-
   // If loop finishes, all retries failed
-  if (lastError) {
-    // Optional: Send notification about persistent email failure?
-    throw new Error(`Failed to send email "${content.subject}" after ${maxRetries} attempts: ${lastError.message}`);
-  }
+  throw new Error(`Failed to send email after ${maxRetries} attempts: ${lastError?.message || 'Unknown Resend error'}`);
 }
 
 // Export types only

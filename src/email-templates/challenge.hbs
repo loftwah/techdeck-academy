@@ -1,0 +1,48 @@
+{{!-- Email template for sending a new challenge --}}
+{{greeting}}
+
+<h1>{{challenge.title}}</h1>
+
+<p>{{challenge.description}}</p>
+
+{{#if challenge.requirements}}
+<h2>Requirements</h2>
+<ul>
+  {{#each challenge.requirements}}
+    <li>{{this}}</li>
+  {{/each}}
+</ul>
+{{/if}}
+
+{{#if challenge.examples}}
+<h2>Examples</h2>
+  {{#each challenge.examples}}
+    {{!-- Assuming examples might be code blocks or simple text --}}
+    {{#if this.isCodeBlock}}
+      <pre style="background-color: #F7FAFC; padding: 16px; border-radius: 8px; overflow-x: auto;"><code>{{this.content}}</code></pre>
+    {{else}}
+      <p>{{this}}</p>
+    {{/if}}
+  {{/each}}
+{{else}}
+  {{!-- Optionally mention if no examples are provided --}}
+  {{!-- <p>No examples provided for this challenge.</p> --}} 
+{{/if}}
+
+{{#if challenge.hints}}
+<h2>Hints</h2>
+<ul>
+  {{#each challenge.hints}}
+    <li>{{this}}</li>
+  {{/each}}
+</ul>
+{{/if}}
+
+<h2>Submission Instructions</h2>
+<ol>
+  <li>Create your solution (filename should include the challenge ID: {{challenge.id}})</li>
+  <li>Save it in the <code>submissions/</code> directory</li>
+  <li>Commit and push your changes</li>
+</ol>
+
+<p>Good luck! 🚀</p> 
