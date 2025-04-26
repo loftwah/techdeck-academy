@@ -16,77 +16,21 @@ import type {
 import type { DigestData } from '../email.js'
 
 describe('Email Utilities', () => {
-  const mockConfig: Config = {
-    userEmail: 'test@example.com',
-    githubUsername: 'testuser',
-    topics: {
-      'typescript': { currentLevel: 3 },
-      'testing': { currentLevel: 2 },
-      'docker': { currentLevel: 1 },
-      'github-actions': { currentLevel: 4 }
-    },
-    difficulty: 5,
-    sessionLength: 60,
-    mentorProfile: 'linus',
-    emailStyle: 'technical' as EmailStyle,
-    schedule: {
-      challengeFrequency: 'weekly' as Schedule
-    },
-    archive: {
-      enabled: true,
-      maxAgeDays: 90
-    },
-    notifications: {
-      emailMentions: true,
-      emailErrors: true
-    }
-  }
-
-  const mockChallenge: Challenge = {
-    id: 'challenge-1',
-    title: 'Test Challenge',
-    description: 'A test challenge description',
-    requirements: ['Requirement 1', 'Requirement 2'],
-    examples: ['Example 1', 'Example 2'],
-    hints: ['Hint 1'],
-    difficulty: 3,
-    topics: ['typescript', 'testing'],
-    createdAt: new Date().toISOString()
-  }
-
-  const mockFeedback: Feedback = {
-    submissionId: 'submission-1',
-    strengths: ['Good code organization'],
-    weaknesses: ['Could improve error handling'],
-    suggestions: ['Consider adding try-catch blocks'],
-    score: 85,
-    improvementPath: 'Focus on error handling patterns',
-    createdAt: new Date().toISOString()
-  }
-
-  const mockDigest: DigestData = {
-    type: 'weekly',
-    period: {
-      start: '2024-03-01',
-      end: '2024-03-07'
-    },
-    stats: {
-      challengesCompleted: 5,
-      averageScore: 87.5,
-      topicsProgress: {
-        typescript: 0.75,
-        testing: 0.6
-      },
-      strengths: ['TypeScript fundamentals', 'Code organization'],
-      areasForImprovement: ['Error handling', 'Testing coverage']
-    },
-    recommendations: ['Practice more error handling scenarios'],
-    nextSteps: ['Complete the error handling challenge']
-  }
-
   describe('formatChallengeEmail', () => {
     it('should format challenge email correctly', async () => {
-      const result = await formatChallengeEmail(mockChallenge, 'technical')
+      const testChallenge: Challenge = {
+        id: 'challenge-1',
+        title: 'Test Challenge',
+        description: 'A test challenge description',
+        type: 'coding',
+        requirements: ['Requirement 1', 'Requirement 2'],
+        examples: ['Example 1', 'Example 2'],
+        hints: ['Hint 1'],
+        difficulty: 3,
+        topics: ['typescript', 'testing'],
+        createdAt: new Date().toISOString()
+      };
+      const result = await formatChallengeEmail(testChallenge, 'technical')
       
       expect(result.subject).toBe('New Challenge: Test Challenge')
       expect(result.html).toContain('Test Challenge')
@@ -99,15 +43,26 @@ describe('Email Utilities', () => {
 
   describe('formatFeedbackEmail', () => {
     it('should format feedback email correctly', async () => {
+      const testChallenge: Challenge = {
+        id: 'challenge-1', title: 'Test Challenge', description: '', type: 'coding',
+        requirements: [], examples: [], difficulty: 3, topics: [], createdAt: new Date().toISOString()
+      };
+      const testFeedback: Feedback = {
+        submissionId: 'submission-1',
+        strengths: ['Good code organization'],
+        weaknesses: ['Could improve error handling'],
+        suggestions: ['Consider adding try-catch blocks'],
+        improvementPath: 'Focus on error handling patterns',
+        createdAt: new Date().toISOString()
+      };
       const result = await formatFeedbackEmail(
-        mockFeedback,
-        { challengeId: mockChallenge.id },
-        mockChallenge,
+        testFeedback,
+        { challengeId: testChallenge.id },
+        testChallenge,
         'technical'
       )
       
       expect(result.subject).toBe('Feedback: Test Challenge')
-      expect(result.html).toContain('Score: 85/100')
       expect(result.html).toContain('Good code organization')
       expect(result.html).toContain('Could improve error handling')
       expect(result.html).toContain('Consider adding try-catch blocks')
@@ -116,51 +71,65 @@ describe('Email Utilities', () => {
 
   describe('formatDigestEmail', () => {
     it('should format digest email correctly', async () => {
-      const result = await formatDigestEmail(mockDigest, 'technical')
+      const testDigest: DigestData = {
+        type: 'weekly',
+        period: { start: '2024-03-01', end: '2024-03-07' },
+        stats: {
+          challengesCompleted: 5,
+          topicsProgress: { typescript: 0.75, testing: 0.6 },
+          strengths: ['TypeScript fundamentals', 'Code organization'],
+          areasForImprovement: ['Error handling', 'Testing coverage']
+        },
+        recommendations: ['Practice more error handling scenarios'],
+        nextSteps: ['Complete the error handling challenge']
+      };
+      const result = await formatDigestEmail(testDigest, 'technical')
       
       expect(result.subject).toBe('Your Weekly TechDeck Academy Progress Report')
       expect(result.html).toContain('Weekly Learning Digest')
       expect(result.html).toContain('Challenges Completed: 5')
-      expect(result.html).toContain('Average Score: 87.5/100')
       expect(result.html).toContain('typescript: 75.0% complete')
     })
   })
 
   describe('sendEmail Retry Logic', () => {
     it('should eventually send an email successfully', async () => {
+      const testConfig: Partial<Config> = { userEmail: 'test@example.com' };
       const content = {
         subject: 'Live Test - sendEmail internal retry',
         html: '<p>This email was sent by a live test (testing internal retry).</p>'
       };
-      await expect(emailUtils.sendEmail(mockConfig, content))
+      await expect(emailUtils.sendEmail(testConfig as Config, content))
         .resolves.toBeUndefined();
     }, 30000);
   })
 
   describe('sendEmail', () => {
     it('should validate email content before sending', async () => {
-      await expect(emailUtils.sendEmail(mockConfig, {
+      const testConfig: Partial<Config> = { userEmail: 'test@example.com' };
+      await expect(emailUtils.sendEmail(testConfig as Config, {
         subject: '',
         html: '<p>Test</p>'
       })).rejects.toThrow('Email subject is required')
 
-      await expect(emailUtils.sendEmail(mockConfig, {
+      await expect(emailUtils.sendEmail(testConfig as Config, {
         subject: 'Test',
         html: ''
       })).rejects.toThrow('Email HTML content is required')
 
-      await expect(emailUtils.sendEmail(mockConfig, {
+      await expect(emailUtils.sendEmail(testConfig as Config, {
         subject: 'A'.repeat(101),
         html: '<p>Test</p>'
       })).rejects.toThrow('Email subject is too long')
     })
 
     it('should send an email successfully via Resend', async () => {
+      const testConfig: Partial<Config> = { userEmail: 'test@example.com' };
       const content = {
         subject: 'Live Test - sendEmail',
         html: '<p>This email was sent by a live test.</p>'
       }
-      await expect(emailUtils.sendEmail(mockConfig, content))
+      await expect(emailUtils.sendEmail(testConfig as Config, content))
         .resolves.toBeUndefined();
     }, 30000)
   })

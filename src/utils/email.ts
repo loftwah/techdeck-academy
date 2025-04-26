@@ -226,7 +226,6 @@ export async function formatFeedbackEmail(
 // Add types for digest data
 interface DigestStats {
   challengesCompleted: number
-  averageScore: number
   topicsProgress: Record<string, number>
   strengths: string[]
   areasForImprovement: string[]
