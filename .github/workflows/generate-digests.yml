@@ -103,33 +103,24 @@ jobs:
             echo
             
             echo "## Statistics"
-            node -e "
-              Promise.all([
-                import('./dist/utils/stats-manager.js'),
-                import('./dist/utils/profile-manager.js')
-              ]).then(async ([stats, profile]) => {
-                const statsData = await stats.readStats();
-                const profileData = await profile.readStudentProfile();
-                
-                console.log('### Activity');
-                console.log(\`- Days Active: \${statsData.activity.daysActive}\`);
-                console.log(\`- Current Streak: \${statsData.activity.streakCurrent}\`);
-                console.log(\`- Longest Streak: \${statsData.activity.streakLongest}\`);
-                console.log();
-                
-                console.log('### Progress');
-                console.log(\`- Current Skill Level: \${profileData.currentSkillLevel}/10\`);
-                console.log(\`- Completed Challenges: \${profileData.completedChallenges}\`);
-                console.log(\`- Average Score: \${profileData.averageScore.toFixed(1)}%\`);
-                console.log();
-                
-                console.log('### Topic Progress');
-                Object.entries(profileData.topicProgress)
-                  .sort(([,a], [,b]) => b - a)
-                  .forEach(([topic, progress]) => {
-                    console.log(\`- \${topic}: \${(progress * 100).toFixed(1)}%\`);
-                  });
-              });
+            node --input-type=module -e "
+              import * as stats from './dist/utils/stats-manager.js';
+              import * as profile from './dist/utils/profile-manager.js';
+              
+              const statsData = await stats.readStats();
+              const profileData = await profile.readStudentProfile();
+              
+              console.log('### Activity');
+              console.log(`- Days Active: ${statsData.activity?.daysActive ?? 0}`);
+              console.log(`- Current Streak: ${statsData.activity?.streakCurrent ?? 0}`);
+              console.log(`- Longest Streak: ${statsData.activity?.streakLongest ?? 0}`);
+              console.log();
+              
+              console.log('### Progress');
+              console.log(`- Current Skill Level: ${profileData.currentSkillLevel ?? 'N/A'}/10`);
+              console.log(`- Completed Challenges: ${profileData.completedChallenges ?? 0}`);
+              console.log(`- Average Score: ${((profileData.averageScore ?? 0).toFixed(1))}%`);
+              console.log();
             "
           } > "$DIGEST_DIR/$FILENAME"
 

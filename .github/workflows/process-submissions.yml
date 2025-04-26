@@ -85,11 +85,14 @@ jobs:
             "
           done
 
-      - name: Commit changes
-        if: success() && steps.identify-submissions.outputs.submissions != ''
+      - name: Commit submission and feedback
+        if: success()
         run: |
           git config --local user.email "academy@techdeck.life"
           git config --local user.name "TechDeck Academy Bot"
-          git add feedback/ progress/ student-profile.json
-          git commit -m "Process submissions and generate feedback" || echo "No changes to commit"
+          # Add the generated feedback, progress reports, updated profile AND ai-memory
+          git add feedback/ progress/ student-profile.json ai-memory.md 
+          # Also add the original submission to the commit
+          git add submissions/
+          git commit -m "Process submission ${{ github.event.inputs.submissionFile }} and provide feedback" || echo "No changes to commit"
           git push 

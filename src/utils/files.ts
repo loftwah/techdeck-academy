@@ -90,52 +90,6 @@ export async function listSubmissions(challengeId?: string): Promise<string[]> {
   return submissions.map(f => f.replace('.json', ''))
 }
 
-// Feedback operations
-export async function writeFeedback(feedback: Feedback): Promise<void> {
-  const filename = `${feedback.submissionId}.json`
-  const filepath = path.join(PATHS.feedback, filename)
-  await fs.writeFile(filepath, JSON.stringify(feedback, null, 2))
-}
-
-export async function readFeedback(submissionId: string): Promise<Feedback> {
-  const filepath = path.join(PATHS.feedback, `${submissionId}.json`)
-  const content = await fs.readFile(filepath, 'utf-8')
-  return JSON.parse(content) as Feedback
-}
-
-// Student profile operations
-export async function readStudentProfile(): Promise<StudentProfile> {
-  try {
-    const content = await fs.readFile('student-profile.json', 'utf-8')
-    return JSON.parse(content) as StudentProfile
-  } catch (error) {
-    // Return default profile if file doesn't exist
-    console.warn('student-profile.json not found, returning default profile.');
-    return {
-      userId: 'unknown-user', // Add default userId
-      strengths: [],
-      weaknesses: [],
-      currentSkillLevel: 1,
-      topicProgress: {},
-      recommendedTopics: [],
-      preferredTopics: [], // Add default preferredTopics
-      recentTopics: [],
-      learningGoals: [],
-      completedChallenges: 0,
-      averageScore: 0,
-      notes: 'New student profile initialized (file not found).',
-      lastUpdated: new Date().toISOString()
-    } as StudentProfile; // Assert type
-  }
-}
-
-export async function writeStudentProfile(profile: StudentProfile): Promise<void> {
-  await fs.writeFile(
-    'student-profile.json', 
-    JSON.stringify(profile, null, 2)
-  )
-}
-
 // Archive operations
 export async function archiveChallenge(challengeId: string): Promise<void> {
   const challenge = await readChallenge(challengeId)

@@ -1,21 +1,16 @@
 import { promises as fs } from 'fs'
 import type { StudentProfile, Challenge, Feedback, MentorProfile, LetterInsights } from '../types.js'
 import { linusProfile } from '../profiles/linus.js'
+import { updateAIMemory } from './ai-memory-manager.js'
 
 const PROFILE_FILE = 'student-profile.json'
 
 // Default profile structure
 const DEFAULT_PROFILE: StudentProfile = {
   userId: 'default-user',
-  strengths: [],
-  weaknesses: [],
   currentSkillLevel: 1,
-  topicProgress: {},
-  recommendedTopics: [],
-  preferredTopics: [],
   completedChallenges: 0,
   averageScore: 0,
-  notes: 'New student profile initialized.',
   lastUpdated: new Date().toISOString()
 }
 
@@ -40,110 +35,53 @@ export async function updateProfileWithFeedback(
   const profile = await readStudentProfile()
   const now = new Date().toISOString()
 
-  // Update completed challenges count
+  // --- Update Core Metrics in JSON Profile ---
   profile.completedChallenges++
 
-  // Update average score
-  const currentAverage = profile.averageScore ?? 0; // Default to 0 if undefined
-  const currentTotalScore = currentAverage * (profile.completedChallenges - 1);
-  const newTotalScore = currentTotalScore + feedback.score;
-  profile.averageScore = newTotalScore / profile.completedChallenges;
-
-  // Update topic progress
-  for (const topic of challenge.topics) {
-    if (!profile.topicProgress[topic]) {
-      profile.topicProgress[topic] = 0
-    }
-    // Increment progress based on score (0.1 for completion, up to 0.9 based on score)
-    const scoreProgress = feedback.score / 100 * 0.9
-    profile.topicProgress[topic] = Math.min(
-      1,
-      profile.topicProgress[topic] + 0.1 + scoreProgress
-    )
-  }
-
-  // Update strengths and weaknesses based on feedback
-  updateStrengthsAndWeaknesses(profile, feedback)
-
-  // Update recommended topics
-  updateRecommendedTopics(profile)
-
-  // Update skill level
-  updateSkillLevel(profile)
+  const currentAverage = profile.averageScore ?? 0
+  const currentTotalScore = currentAverage * (profile.completedChallenges - 1)
+  const newTotalScore = currentTotalScore + feedback.score
+  profile.averageScore = parseFloat((newTotalScore / profile.completedChallenges).toFixed(2))
 
   profile.lastUpdated = now
-  await writeStudentProfile(profile)
-}
+  await writeStudentProfile(profile) // Write minimal profile
 
-function updateStrengthsAndWeaknesses(
-  profile: StudentProfile,
-  feedback: Feedback
-): void {
-  // Keep only the most recent 5 strengths and weaknesses
-  const maxItems = 5
+  // --- Log Detailed Context to AI Memory ---
+  const memoryEntry = `
+*   **Challenge Completed:** ${challenge.title} (ID: ${challenge.id})
+*   **Score:** ${feedback.score}/100
+*   **AI Feedback Suggestions:** ${feedback.suggestions.join(', ') || 'None provided'}
+*   **Identified Strengths:** ${feedback.strengths.join(', ') || 'None noted'}
+*   **Identified Weaknesses:** ${feedback.weaknesses.join(', ') || 'None noted'}
+*   **Timestamp:** ${now}
+  `
 
-  // Add new strengths while avoiding duplicates
-  for (const strength of feedback.strengths) {
-    if (!profile.strengths.includes(strength)) {
-      profile.strengths.unshift(strength)
-      if (profile.strengths.length > maxItems) {
-        profile.strengths.pop()
-      }
-    }
-  }
-
-  // Add new weaknesses while avoiding duplicates
-  for (const weakness of feedback.weaknesses) {
-    if (!profile.weaknesses.includes(weakness)) {
-      profile.weaknesses.unshift(weakness)
-      if (profile.weaknesses.length > maxItems) {
-        profile.weaknesses.pop()
-      }
-    }
+  try {
+    await updateAIMemory('recentActivity', memoryEntry.trim())
+    console.log(`Logged feedback context for challenge ${challenge.id} to AI memory.`)
+  } catch (error) {
+    console.error(`Failed to log feedback context for challenge ${challenge.id} to AI memory:`, error)
   }
 }
 
-function updateRecommendedTopics(profile: StudentProfile): void {
-  // Find topics with low progress
-  const lowProgressTopics = Object.entries(profile.topicProgress)
-    .filter(([_, progress]) => progress < 0.5)
-    .map(([topic]) => topic)
+export async function logAIMemoryEvent(eventDescription: string, section: 'recentActivity' | 'snapshot' | 'history' = 'recentActivity'): Promise<void> {
+  const now = new Date().toISOString()
+  const memoryEntry = `*   [${now}] ${eventDescription}`
 
-  // Prioritize topics that are weaknesses
-  const weaknessTopics = profile.weaknesses
-    .flatMap(weakness => {
-      // Extract topics from weakness descriptions
-      // This is a simple example - you might want more sophisticated matching
-      return Object.keys(profile.topicProgress)
-        .filter(topic => weakness.toLowerCase().includes(topic.toLowerCase()))
-    })
-
-  // Combine and deduplicate topics
-  profile.recommendedTopics = [...new Set([...weaknessTopics, ...lowProgressTopics])]
-    .slice(0, 5) // Keep top 5 recommendations
-}
-
-function updateSkillLevel(profile: StudentProfile): void {
-  // Ensure averageScore is treated as 0 if undefined
-  const avgScore = profile.averageScore ?? 0;
-
-  // Calculate skill level based on multiple factors
-  const factors = {
-    averageScore: (avgScore / 100) * 0.4, // 40% weight
-    topicProgress: Object.values(profile.topicProgress).reduce((sum, p) => sum + p, 0) /
-      Math.max(1, Object.keys(profile.topicProgress).length) * 0.3, // 30% weight
-    completedChallenges: Math.min(1, profile.completedChallenges / 50) * 0.3 // 30% weight
-  };
-
-  const totalProgress = Object.values(factors).reduce((sum, factor) => sum + factor, 0)
-  profile.currentSkillLevel = Math.round(totalProgress * 10) // Convert to 1-10 scale
-}
-
-export async function addNotes(notes: string): Promise<void> {
-  const profile = await readStudentProfile()
-  profile.notes = `${new Date().toISOString()}: ${notes}\n${profile.notes}`
-  profile.lastUpdated = new Date().toISOString()
-  await writeStudentProfile(profile)
+  try {
+    await updateAIMemory(section, memoryEntry)
+    console.log(`Logged event to AI memory (${section}): "${eventDescription}"`)
+  } catch (error) {
+    console.error(`Failed to log event to AI memory (${section}):`, error)
+  }
+  // Also update the timestamp in the minimal profile
+  try {
+    const profile = await readStudentProfile()
+    profile.lastUpdated = now
+    await writeStudentProfile(profile)
+  } catch (error) {
+    console.error('Failed to update profile timestamp after logging AI memory event:', error)
+  }
 }
 
 export async function loadMentorProfile(profileName: string): Promise<MentorProfile> {
@@ -157,72 +95,51 @@ export async function updateProfileFromLetterInsights(
   insights: LetterInsights
 ): Promise<void> {
   if (!insights || Object.keys(insights).length === 0) {
-    console.log('No insights provided from letter, profile not updated.');
-    return; // Nothing to update
+    console.log('No insights provided from letter, AI memory not updated.')
+    return // Nothing to update
   }
 
-  const profile = await readStudentProfile();
-  const maxItems = 5; // Limit history size for strengths/weaknesses
+  const now = new Date().toISOString()
+  console.log('Processing letter insights for AI Memory:', insights)
 
-  console.log('Updating profile with insights:', insights);
+  // --- Log Detailed Context to AI Memory ---
+  let memoryEntry = `*   **Insights from Letter (${now}):**`
+  if (insights.sentiment) memoryEntry += ` Sentiment: ${insights.sentiment}.`
+  if (insights.strengths && insights.strengths.length > 0) memoryEntry += ` Strengths Mentioned: ${insights.strengths.join(', ')}.`
+  if (insights.weaknesses && insights.weaknesses.length > 0) memoryEntry += ` Weaknesses Mentioned: ${insights.weaknesses.join(', ')}.`
+  if (insights.topics && insights.topics.length > 0) memoryEntry += ` Topics Discussed: ${insights.topics.join(', ')}.`
+  if (insights.skillLevelAdjustment) memoryEntry += ` Suggested Skill Adjustment: ${insights.skillLevelAdjustment}.` // Log suggestion, don't apply directly
+  if (insights.flags && insights.flags.length > 0) memoryEntry += ` Flags: ${insights.flags.join(', ')}.`
 
-  // Update strengths
-  if (insights.strengths && insights.strengths.length > 0) {
-    insights.strengths.forEach(strength => {
-      if (!profile.strengths.includes(strength)) {
-        profile.strengths.unshift(strength); // Add to beginning
-      }
-    });
-    profile.strengths = profile.strengths.slice(0, maxItems); // Keep most recent
+  try {
+    await updateAIMemory('recentActivity', memoryEntry)
+    console.log('Logged letter insights context to AI memory.')
+  } catch (error) {
+    console.error('Failed to log letter insights context to AI memory:', error)
   }
 
-  // Update weaknesses
-  if (insights.weaknesses && insights.weaknesses.length > 0) {
-    insights.weaknesses.forEach(weakness => {
-      if (!profile.weaknesses.includes(weakness)) {
-        profile.weaknesses.unshift(weakness); // Add to beginning
-      }
-    });
-    profile.weaknesses = profile.weaknesses.slice(0, maxItems); // Keep most recent
+  // --- Update Minimal JSON Profile Timestamp ---
+  try {
+    const profile = await readStudentProfile()
+    profile.lastUpdated = now
+    // Optionally update core metrics like skill level IF the insight implies a direct, simple update AND we keep that field
+    // Example: if (insights.skillLevelAdjustment) profile.currentSkillLevel = Math.max(1, Math.min(10, profile.currentSkillLevel + insights.skillLevelAdjustment))
+    await writeStudentProfile(profile)
+    console.log('Minimal student profile timestamp updated.')
+  } catch (error) {
+    console.error('Failed to update profile timestamp after processing letter insights:', error)
   }
-
-  // Update recent topics (optional, if insights provide topics)
-  if (insights.topics && insights.topics.length > 0) {
-    const recentTopicsSet = new Set(profile.recentTopics || []);
-    insights.topics.forEach(topic => recentTopicsSet.add(topic));
-    profile.recentTopics = Array.from(recentTopicsSet).slice(-10); // Keep last 10 topics
-  }
-
-  // Adjust skill level (optional)
-  if (insights.skillLevelAdjustment) {
-    profile.currentSkillLevel = Math.max(1, Math.min(10, profile.currentSkillLevel + insights.skillLevelAdjustment));
-    profile.currentSkillLevel = parseFloat(profile.currentSkillLevel.toFixed(1)); // Keep one decimal place
-    console.log(`Adjusted skill level by ${insights.skillLevelAdjustment} to ${profile.currentSkillLevel}`);
-  }
-
-  // Add insights/flags to notes (optional)
-  let noteUpdate = 'Insights from letter:';
-  let hasNotes = false;
-  if (insights.sentiment) { noteUpdate += ` Sentiment: ${insights.sentiment}.`; hasNotes = true; }
-  if (insights.flags && insights.flags.length > 0) { noteUpdate += ` Flags: ${insights.flags.join(', ')}.`; hasNotes = true; }
-  if (hasNotes) {
-    profile.notes = `${new Date().toISOString()}: ${noteUpdate}\n${profile.notes}`;
-  }
-
-  profile.lastUpdated = new Date().toISOString();
-  await writeStudentProfile(profile);
-  console.log('Profile updated successfully based on letter insights.');
 }
 
 // Helper function to load mentor profiles dynamically (if needed in the future)
 // async function loadMentorProfileFromFile(profileName: string): Promise<MentorProfile> {
 //   const profilePath = path.join(__dirname, '../profiles', `${profileName}.json`); // Assuming JSON format
 //   try {
-//     const content = await fs.readFile(profilePath, 'utf-8');
-//     return JSON.parse(content) as MentorProfile;
+//     const content = await fs.readFile(profilePath, 'utf-8')
+//     return JSON.parse(content) as MentorProfile
 //   } catch (error) {
-//     console.error(`Error loading mentor profile '${profileName}':`, error);
+//     console.error(`Error loading mentor profile '${profileName}':`, error)
 //     // Fallback to a default or throw an error
-//     throw new Error(`Mentor profile ${profileName} not found or invalid.`);
+//     throw new Error(`Mentor profile ${profileName} not found or invalid.`)
 //   }
 // } 

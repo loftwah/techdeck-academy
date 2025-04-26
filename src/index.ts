@@ -6,7 +6,9 @@ import * as stats from './utils/stats-manager.js'
 import * as summary from './utils/summary-manager.js'
 import * as profile from './utils/profile-manager.js'
 import { readStudentProfile, loadMentorProfile } from './utils/profile-manager.js'
+import { readAIMemoryRaw } from './utils/ai-memory-manager.js'
 import type { Challenge, Submission, StudentProfile } from './types.js'
+import path from 'path'
 
 // Initialize the application
 async function initialize(): Promise<StudentProfile> {
@@ -42,14 +44,14 @@ async function initialize(): Promise<StudentProfile> {
 
 // Generate and send a new challenge
 async function generateChallenge(): Promise<void> {
-  const studentProfile = await profile.readStudentProfile()
   const context = await summary.getContextForAI('challenge')
   const recentChallenges = (context as any).recentChallenges || []
+  const aiMemory = await readAIMemoryRaw()
 
   // Generate the challenge
   const challenge = await ai.generateChallenge(
     config,
-    studentProfile,
+    aiMemory,
     recentChallenges
   )
 
@@ -70,8 +72,8 @@ async function generateChallenge(): Promise<void> {
 
 // Process a submission and provide feedback
 async function processSubmission(submission: Submission): Promise<void> {
-  const studentProfile = await profile.readStudentProfile()
   const challenge = await files.readChallenge(submission.challengeId)
+  const aiMemory = await readAIMemoryRaw()
 
   // Save the submission
   await files.writeSubmission(submission)
@@ -80,7 +82,7 @@ async function processSubmission(submission: Submission): Promise<void> {
   const feedback = await ai.generateFeedback(
     challenge,
     submission,
-    studentProfile,
+    aiMemory,
     config.mentorProfile
   )
 
@@ -103,32 +105,42 @@ async function processSubmission(submission: Submission): Promise<void> {
 
 // Archive old content
 async function archiveOldContent(): Promise<void> {
-  const { archive } = config
+  const { archive } = config;
+
+  if (!archive.enabled) {
+      console.log('Archiving is disabled in config.');
+      return;
+  }
+
+  const maxAge = archive.maxAgeDays; // Use the single maxAgeDays value
+  console.log(`Archiving content older than ${maxAge} days...`);
 
   // Get all challenges
-  const challengeIds = await files.listChallenges()
+  const challengeIds = await files.listChallenges();
 
   for (const challengeId of challengeIds) {
-    const challengePath = `${files.PATHS.challenges}/${challengeId}.json`
-    if (await files.isFileOlderThan(challengePath, archive.challengeRetentionDays)) {
-      await files.archiveChallenge(challengeId)
-      await summary.moveChallengeToArchived(challengeId)
+    const challengePath = path.join(files.PATHS.challenges, `${challengeId}.json`); // Use path.join
+    if (await files.isFileOlderThan(challengePath, maxAge)) { // Use maxAge
+      console.log(`Archiving challenge: ${challengeId}`);
+      await files.archiveChallenge(challengeId);
+      await summary.moveChallengeToArchived(challengeId);
     }
   }
 
   // Archive old submissions
-  const submissionIds = await files.listSubmissions()
+  const submissionIds = await files.listSubmissions();
   for (const submissionId of submissionIds) {
-    const submissionPath = `${files.PATHS.submissions}/${submissionId}.json`
-    if (await files.isFileOlderThan(submissionPath, archive.submissionRetentionDays)) {
-      await files.archiveSubmission(submissionId)
+    const submissionPath = path.join(files.PATHS.submissions, `${submissionId}.json`); // Use path.join
+    if (await files.isFileOlderThan(submissionPath, maxAge)) { // Use maxAge
+      console.log(`Archiving submission: ${submissionId}`);
+      await files.archiveSubmission(submissionId);
     }
   }
 
   // Prune old summary entries
-  await summary.pruneOldSummaryEntries(archive.challengeRetentionDays)
+  await summary.pruneOldSummaryEntries(maxAge); // Use maxAge
 
-  console.log('Archive operation completed')
+  console.log('Archive operation completed');
 }
 
 // Export the main functions and config

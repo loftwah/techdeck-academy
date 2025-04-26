@@ -6,6 +6,7 @@ import * as profileManager from '../utils/profile-manager.js';
 import * as ai from '../utils/ai.js';
 import * as email from '../utils/email.js';
 import * as files from '../utils/files.js'; // For archiving and directory management
+import { readAIMemoryRaw } from '../utils/ai-memory-manager.js'; // Import memory reader
 import type { StudentProfile, Config, MentorProfile, LetterResponse } from '../types.js';
 
 const LETTERS_TO_MENTOR_DIR = path.join('letters', 'to-mentor');
@@ -14,21 +15,20 @@ const LETTERS_FROM_MENTOR_DIR = path.join('letters', 'from-mentor');
 const ARCHIVE_LETTERS_TO_MENTOR_DIR = path.join('archive', 'letters', 'to-mentor');
 const ARCHIVE_LETTERS_FROM_MENTOR_DIR = path.join('archive', 'letters', 'from-mentor');
 
-async function processSingleLetter(letterPath: string, config: Config, profile: StudentProfile, mentor: MentorProfile): Promise<boolean> {
+async function processSingleLetter(letterPath: string, config: Config, aiMemory: string, mentor: MentorProfile): Promise<boolean> {
     console.log(`Processing letter: ${letterPath}`);
     const letterFilename = path.basename(letterPath);
     try {
         const letterContent = await fs.readFile(letterPath, 'utf-8');
 
         // --- 1. Generate AI Response ---
-        // TODO: Gather recent correspondence if needed for better context
         const recentCorrespondence: string[] = []; // Placeholder for now
         const mentorResponse = await ai.generateLetterResponse(
             letterContent,
             recentCorrespondence,
-            profile,
-            mentor,
-            config // Pass config for subject areas etc.
+            aiMemory, // Pass AI Memory string
+            mentor.name, // Pass mentor name
+            config
         );
 
         // --- 2. Save Mentor Response ---
@@ -38,13 +38,13 @@ async function processSingleLetter(letterPath: string, config: Config, profile: 
         await fs.writeFile(responseFilePath, mentorResponse.content);
         console.log(`Mentor response saved to: ${responseFilePath}`);
 
-        // --- 3. Update Student Profile ---
+        // --- 3. Update Student Profile (via insights -> AI Memory) ---
+        // updateProfileFromLetterInsights now logs details to AI memory and updates minimal profile timestamp
         await profileManager.updateProfileFromLetterInsights(mentorResponse.insights);
-        // The update function already saves the profile and updates timestamp
-
+        
         // --- 4. Send Email ---
         if (config.notifications?.emailMentions !== false) { // Check notification preference
-            const emailContent = await email.formatLetterResponseEmail( // Added await
+            const emailContent = await email.formatLetterResponseEmail(
                 mentorResponse,
                 letterContent,
                 config.emailStyle || 'casual',
@@ -85,9 +85,9 @@ async function main() {
 
     try {
         // Load necessary context once
-        const studentProfile = await profileManager.readStudentProfile();
-        // Load the specific mentor profile based on config
+        // const studentProfile = await profileManager.readStudentProfile(); // Keep if needed for non-AI tasks, otherwise remove
         const mentorProfile = await profileManager.loadMentorProfile(config.mentorProfile);
+        const aiMemory = await readAIMemoryRaw(); // Read AI memory once
 
         if (!mentorProfile) {
             // loadMentorProfile logs a warning and returns a default, so this check might not be strictly needed
@@ -107,8 +107,8 @@ async function main() {
                 continue;
             }
             
-            const currentProfileSnapshot = await profileManager.readStudentProfile(); // Read latest profile for each letter
-            const success = await processSingleLetter(letterPath, config, currentProfileSnapshot, mentorProfile);
+            // Pass aiMemory instead of profile snapshot
+            const success = await processSingleLetter(letterPath, config, aiMemory, mentorProfile);
             if (success) {
                 successCount++;
             } else {

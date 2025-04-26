@@ -47,16 +47,8 @@ export interface Feedback {
 export interface StudentProfile {
   userId: string;
   currentSkillLevel: number;
-  strengths: string[];
-  weaknesses: string[];
-  topicProgress: Record<string, number>;
-  recentTopics?: string[];
-  recommendedTopics?: string[];
-  learningGoals?: string[];
-  preferredTopics: string[];
   completedChallenges: number;
   averageScore?: number;
-  notes: string;
   lastUpdated: string;
 }
 

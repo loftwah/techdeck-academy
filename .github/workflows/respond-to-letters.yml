@@ -91,23 +91,12 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           # Ensure NODE_ENV or other relevant env vars are set if needed by config/scripts
 
-      - name: Commit changes if any were processed
-        if: steps.find_letters.outputs.files != ''
+      - name: Commit response and updated profile
+        if: success() && steps.find-letters.outputs.letters_processed == 'true'
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action (Respond to Letters)" # More specific name
-          
-          # Add specific files/dirs modified by the processing script
-          # Note: Ensure the script reliably places outputs here
-          git add letters/from-mentor/ archive/letters/to-mentor/ student-profile.json
-          
-          # Check if there are staged changes
-          if git diff --staged --quiet; then
-            echo "No changes to commit. Processing might have failed or produced no output."
-            # Potentially fail the step here if changes were expected but not found?
-          else
-            echo "Committing changes..."
-            git commit -m "[Automated] Respond to letters, update profile, archive processed"
-            echo "Pushing changes..."
-            git push
-          fi 
+          git config --local user.email "academy@techdeck.life"
+          git config --local user.name "TechDeck Academy Bot"
+          # Add generated response, archived original, updated profile AND ai-memory
+          git add letters/from-mentor/ archive/letters/to-mentor/ student-profile.json ai-memory.md
+          git commit -m "Respond to student letters and update profile" || echo "No changes to commit"
+          git push 
