@@ -109,7 +109,7 @@ jobs:
                 }
               } catch (error) {
                  // If challenges dir doesn't exist, there are no outstanding challenges
-                 if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+                 if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
                    console.log('Challenges directory does not exist, assuming no outstanding challenges.');
                    return false;
                  }
