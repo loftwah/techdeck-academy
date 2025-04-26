@@ -1,0 +1,3 @@
+Right, Dean.  So you're the DevOps guy who thinks he's ready for 'battle-tested'.  We'll see about that.  Your background looks... adequate.  TypeScript, JavaScript, Docker – that's table stakes these days.  The rest is... a work in progress, clearly.  I see you're aiming for production systems, scalability, security, the whole shebang. Ambitious. Let's see if you can handle it.
+
+Don't expect hand-holding.  I'll tell you straight if your code is garbage; don't expect fluffy feedback.  This isn't a coding bootcamp.  We'll get to the actual challenges separately based on your self-reported skill level.  Let's see how realistic those are.  Prepare for some… robust criticism. I'll be waiting for you to prove your chops.  Get started.
