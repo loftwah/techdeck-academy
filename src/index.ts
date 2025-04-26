@@ -21,14 +21,16 @@ async function initialize(): Promise<StudentProfile> {
     console.warn('Student profile not found or invalid. Creating default profile.');
     const now = new Date().toISOString();
     // Create default profile matching the StudentProfile type
+    // Determine initial status based on config
+    const initialStatus = config.introductionSubmitted ? 'active' : 'awaiting_introduction';
+
     studentProfile = {
         userId: config.githubUsername || 'default-user',
         name: config.githubUsername || 'Default User', // Use name
         completedChallenges: 0,
-        averageScore: 0, 
         currentSkillLevel: config.difficulty, 
         lastUpdated: now,
-        status: 'awaiting_introduction', 
+        status: initialStatus, 
         topicLevels: {}, 
         currentChallengeId: undefined, 
     };

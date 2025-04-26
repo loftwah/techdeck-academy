@@ -39,7 +39,6 @@ export interface Feedback {
   strengths: string[]
   weaknesses: string[]
   suggestions: string[]
-  score: number // 0-100
   improvementPath: string
   createdAt: string
 }
@@ -48,12 +47,11 @@ export interface Feedback {
 export interface StudentProfile {
   userId: string // Could be GitHub username or a unique ID
   name: string // Added name field
-  currentSkillLevel: number // Overall level (1-10) - maybe derived?
+  currentSkillLevel: number // Overall level (1-10) - reflects config.difficulty
   completedChallenges: number
-  averageScore: number // Average score from feedback
   lastUpdated: string // ISO date string
   status: 'awaiting_introduction' | 'active' | 'paused' | 'completed' // Learning status
-  topicLevels?: Record<string, { currentLevel: number }> 
+  topicLevels?: Record<string, { currentLevel: number }> // Reflects config.topics
   currentChallengeId?: string; // Added missing optional field based on schema usage
 }
 

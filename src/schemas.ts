@@ -42,7 +42,6 @@ export const FeedbackSchema = z.object({
     strengths: z.array(z.string()).optional().default([]),
     weaknesses: z.array(z.string()).optional().default([]),
     suggestions: z.array(z.string()).optional().default([]),
-    score: z.number().min(0).max(100), // Score between 0 and 100
     improvementPath: z.string().optional().default("Review suggestions and try applying them."),
     createdAt: isoDateTimeString
 });
@@ -65,7 +64,6 @@ export const StudentProfileSchema = z.object({
     name: z.string(), // Added name field
     status: StudentProfileStatusSchema,
     currentSkillLevel: z.number().min(0).max(10),
-    averageScore: z.number().min(0).max(100),
     lastUpdated: isoDateTimeString,
     currentChallengeId: z.string().optional(), // Added optional field
     completedChallenges: z.number().min(0).default(0),

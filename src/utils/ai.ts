@@ -202,11 +202,23 @@ export async function generateFeedbackPrompt(
       `Provide key strengths of the implementation in relation to the student's progress.`,
       `Identify areas for improvement, considering patterns noted in the memory.`,
       `Give specific suggestions for better approaches or refinements.`,
-      `Provide a numerical score out of 100.`,
       `Recommend concrete next steps for improvement, relevant to the student's history.`
   ];
 
-  const outputFormatDescription = `Format the response as a single JSON object matching the Feedback schema: { submissionId: string (use "${submission.challengeId}"), strengths: string[], weaknesses: string[], suggestions: string[], score: number, improvementPath: string, createdAt: string (ISO timestamp) }. Respond ONLY with this JSON object.`;
+  // REVISED: Request Markdown output ONLY for qualitative feedback fields.
+  const outputFormatDescription = `Respond using Markdown. Use the following headings EXACTLY, including the double hash marks and the field name, followed by the content on the next line(s). Use bullet points for lists under headings.
+## Strengths
++- [Strength 1]
++- ...
+## Weaknesses
++- [Weakness 1]
++- ...
+## Suggestions
++- [Suggestion 1]
++- ...
+## Improvement Path
+[Recommended next steps or focus areas]
+DO NOT include headings or fields for 'submissionId' or 'createdAt'. These are handled by the application.`;
 
   return buildPrompt(
       mentorProfile, // Pass the mentor persona
@@ -422,45 +434,51 @@ export async function generateFeedback(
     
   let text = textResponse; 
   
-  // Use Zod schema for parsing and validation
-  let feedback: Feedback;
-  try {
-      // Try parsing directly from potential markdown block
-      const jsonRegex = /```json\n([\s\S]*?)\n```/;
-      const match = text.match(jsonRegex);
-      const jsonToParse = match && match[1] ? match[1] : text; // Use extracted or original text
-      const parsedData = JSON.parse(jsonToParse);
-      feedback = ZodFeedbackSchema.parse(parsedData); // Validate using Zod
-  } catch (e) {
-      console.error("Failed to parse/validate Feedback JSON:", e);
-      console.error("Raw AI Response Text (before potential extraction):", text);
-       // Attempt to find JSON within potentially messy output ONLY if primary parse failed
-       if (!(e instanceof SyntaxError)) { // Don't retry if it wasn't a basic JSON syntax error initially
-           const nestedJsonMatch = text.match(/{[\s\S]*}/);
-           if (nestedJsonMatch && nestedJsonMatch[0]) {
-               try {
-                   console.log("Attempting to parse/validate nested JSON as fallback...");
-                   const parsedFallback = JSON.parse(nestedJsonMatch[0]);
-                   feedback = ZodFeedbackSchema.parse(parsedFallback); // Validate fallback using Zod
-               } catch (nestedE) {
-                   console.error("Fallback JSON parsing/validation failed.", nestedE);
-                   const errorDetails = nestedE instanceof Error ? nestedE.message : String(nestedE);
-                   throw new Error(`AI response for feedback generation was not valid Feedback JSON, even with fallback parsing: ${errorDetails}`);
-               }
-           } else {
-                const errorDetails = e instanceof Error ? e.message : String(e);
-               throw new Error(`AI response for feedback generation did not contain valid Feedback JSON: ${errorDetails}`);
-           }
-       } else {
-            const errorDetails = e instanceof Error ? e.message : String(e);
-           throw new Error(`AI response for feedback generation was not valid Feedback JSON: ${errorDetails}`);
-       }
+  // --- START NEW MARKDOWN PARSING LOGIC for Feedback ---
+  console.log('Parsing feedback Markdown response...');
+  console.log('Raw AI feedback response:\n', text);
+
+  // Re-use helper functions from generateChallenge (assuming they are accessible or redefined here)
+  // If not accessible, redefine extractContent and parseList here.
+  // For brevity, assuming they are accessible/redefined:
+  const extractContent = (heading: string): string | null => {
+    const regex = new RegExp(`^## ${heading}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, "im");
+    const match = text.match(regex);
+    return match && match[1] ? match[1].trim() : null;
+  };
+  const parseList = (content: string | null): string[] => {
+    if (!content) return [];
+    return content.split('\\n')
+      .map(line => line.match(/^\\s*[-*]\\s*(.*)/))
+      .filter(match => match !== null)
+      .map(match => match![1].trim());
+  };
+
+  const parsedFeedback: Partial<Feedback> = {};
+
+  parsedFeedback.strengths = parseList(extractContent('Strengths'));
+  parsedFeedback.weaknesses = parseList(extractContent('Weaknesses'));
+  parsedFeedback.suggestions = parseList(extractContent('Suggestions'));
+  parsedFeedback.improvementPath = extractContent('Improvement Path') ?? 'No specific path provided.';
+
+  // Basic check for essential feedback content (optional, adjust as needed)
+  if (parsedFeedback.strengths.length === 0 && parsedFeedback.weaknesses.length === 0 && parsedFeedback.suggestions.length === 0) {
+      console.warn('AI feedback response seemed empty or failed to parse headings (Strengths, Weaknesses, Suggestions). Check raw response.');
+      // Decide if we should throw or allow empty feedback
   }
 
-  // Ensure submissionId and createdAt are set AFTER successful parsing
-  // Other fields are handled by Zod schema (required, types, defaults)
-  feedback.submissionId = submission.challengeId; // Ensure submissionId matches challengeId
-  feedback.createdAt = feedback.createdAt || new Date().toISOString(); // Use parsed or generate new
+  // Construct the final Feedback object
+  const feedback: Feedback = {
+      submissionId: submission.challengeId, // Assign locally
+      createdAt: new Date().toISOString(), // Assign locally
+      strengths: parsedFeedback.strengths,
+      weaknesses: parsedFeedback.weaknesses,
+      suggestions: parsedFeedback.suggestions,
+      improvementPath: parsedFeedback.improvementPath,
+  };
+
+  // No Zod validation needed here unless we redefine a Zod schema for Markdown-parsed fields
+  // --- END NEW MARKDOWN PARSING LOGIC for Feedback ---
 
   return feedback;
 }

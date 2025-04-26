@@ -14,7 +14,6 @@ const DEFAULT_PROFILE: StudentProfile = {
   name: 'Default User',
   currentSkillLevel: 1,
   completedChallenges: 0,
-  averageScore: 0,
   lastUpdated: new Date().toISOString(),
   status: 'awaiting_introduction', // Default status
   topicLevels: {}
@@ -99,21 +98,13 @@ export async function updateProfileWithFeedback(
   if (profile) {
     profile.completedChallenges++
 
-    const currentAverage = profile.averageScore ?? 0
-    const currentTotalScore = currentAverage * (profile.completedChallenges - 1)
-    const newTotalScore = currentTotalScore + feedback.score
-    profile.averageScore = parseFloat((newTotalScore / profile.completedChallenges).toFixed(2))
-
     profile.lastUpdated = now
     await writeStudentProfile(profile) // Write minimal profile
 
     // --- Log Detailed Context to AI Memory ---
     const memoryEntry = `
 *   **Challenge Completed:** ${challenge.title} (ID: ${challenge.id})
-*   **Score:** ${feedback.score}/100
-*   **AI Feedback Suggestions:** ${feedback.suggestions.join(', ') || 'None provided'}
-*   **Identified Strengths:** ${feedback.strengths.join(', ') || 'None noted'}
-*   **Identified Weaknesses:** ${feedback.weaknesses.join(', ') || 'None noted'}
+*   **AI Feedback Summary:** (Strengths: ${feedback.strengths.join(', ') || 'None'}, Weaknesses: ${feedback.weaknesses.join(', ') || 'None'}, Suggestions: ${feedback.suggestions.join(', ') || 'None'})
 *   **Timestamp:** ${now}
     `
 
