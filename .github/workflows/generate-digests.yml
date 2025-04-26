@@ -89,38 +89,58 @@ jobs:
             FILENAME="$(date +%Y)-Q${QUARTER}.md"
           fi
 
-          # Initialize application and gather stats
-          node -e "
-            import('./dist/index.js').then(async ({initialize}) => {
-              await initialize();
-            });
-          "
-
-          # Generate digest content using stats and profile data
+          # Initialize application (potentially needed for config/utils loading by scripts)
+          # If scripts load everything themselves, this might be removable.
+          # node -e \\\"import(\\\'./dist/index.js\\\').then(async ({initialize}) => { await initialize(); });\\\"\n
+          # Generate digest content using stats, profile data, and AI Memory Summary
           {
             echo "# ${DIGEST_TYPE^} Progress Report"
             echo "Generated: $(date -u)"
             echo
             
+            # Generate and print AI Summary section first
+            echo "## AI Summary"
+            node --input-type=module -e "
+              import { readAIMemoryRaw } from './dist/utils/ai-memory-manager.js';
+              import { generateDigestSummary } from './dist/utils/ai.js';
+              
+              try {
+                const aiMemory = await readAIMemoryRaw();
+                const digestType = process.env.DIGEST_TYPE || 'weekly'; // Get digest type from env
+                const summary = await generateDigestSummary(aiMemory, digestType);
+                console.log(summary); // Print the AI-generated summary
+              } catch (err) {
+                console.error('Error generating AI Summary:', err);
+                console.log('(Could not generate AI summary.)');
+              }
+            "
+            echo
+
+            # Generate and print Statistics section second
             echo "## Statistics"
             node --input-type=module -e "
               import * as stats from './dist/utils/stats-manager.js';
               import * as profile from './dist/utils/profile-manager.js';
               
-              const statsData = await stats.readStats();
-              const profileData = await profile.readStudentProfile();
-              
-              console.log('### Activity');
-              console.log(`- Days Active: ${statsData.activity?.daysActive ?? 0}`);
-              console.log(`- Current Streak: ${statsData.activity?.streakCurrent ?? 0}`);
-              console.log(`- Longest Streak: ${statsData.activity?.streakLongest ?? 0}`);
-              console.log();
-              
-              console.log('### Progress');
-              console.log(`- Current Skill Level: ${profileData.currentSkillLevel ?? 'N/A'}/10`);
-              console.log(`- Completed Challenges: ${profileData.completedChallenges ?? 0}`);
-              console.log(`- Average Score: ${((profileData.averageScore ?? 0).toFixed(1))}%`);
-              console.log();
+              try {
+                const statsData = await stats.readStats();
+                const profileData = await profile.readStudentProfile();
+                
+                console.log('### Activity');
+                console.log(`- Days Active: ${statsData?.activity?.daysActive ?? 0}`);
+                console.log(`- Current Streak: ${statsData?.activity?.streakCurrent ?? 0}`);
+                console.log(`- Longest Streak: ${statsData?.activity?.streakLongest ?? 0}`);
+                console.log();
+                
+                console.log('### Progress');
+                console.log(`- Current Skill Level: ${profileData?.currentSkillLevel ?? 'N/A'}/10`);
+                console.log(`- Completed Challenges: ${profileData?.completedChallenges ?? 0}`);
+                console.log(`- Average Score: ${((profileData?.averageScore ?? 0).toFixed(1))}%`);
+                console.log();
+              } catch (err) {
+                console.error('Error generating Statistics section:', err);
+                console.log('(Could not generate statistics.)');
+              }
             "
           } > "$DIGEST_DIR/$FILENAME"
 

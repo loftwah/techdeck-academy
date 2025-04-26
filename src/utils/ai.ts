@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import { environment } from '../config.js'
 import * as files from './files.js'; // Import file utilities
 import { readAIMemoryRaw } from './ai-memory-manager.js'; // Import memory reader
+import * as profile from './profile-manager.js'; // Import profile manager for loadMentorProfile
 import type { 
   Challenge, 
   StudentProfile, // Keep StudentProfile for types that might still use minimal version
@@ -310,4 +311,61 @@ export async function generateLetterResponse(
   }
 }
 
-// ... existing parseLetterResponse ...
+// Ensure parseLetterResponse function definition exists
+export async function parseLetterResponse(responseText: string): Promise<LetterResponse> {
+  let text = responseText;
+  // Extract JSON from markdown code block if present
+  const jsonRegex = /```json\n([\s\S]*?)\n```/i;
+  const match = text.match(jsonRegex);
+  if (match && match[1]) {
+    text = match[1];
+  }
+
+  try {
+    const parsed = JSON.parse(text) as LetterResponse;
+    // Basic validation (can be expanded)
+    if (!parsed.content || typeof parsed.content !== 'string') {
+      throw new Error('Invalid or missing content field in AI response');
+    }
+    if (!parsed.insights || typeof parsed.insights !== 'object') {
+        // If insights are missing, create an empty object
+        console.warn('Insights object missing in AI response, creating empty one.');
+        parsed.insights = {}; 
+    }
+    return parsed;
+  } catch (error) {
+    console.error('Error parsing AI letter response:', error);
+    console.error('Raw AI response text:', responseText);
+    // Fallback response if parsing fails
+     return {
+      content: `I encountered an issue processing my thoughts on your letter. Could you perhaps rephrase or clarify?\n\nRaw Error Data (for debugging):\n${responseText}`, // Include raw text for debugging
+      insights: {} // Return empty insights on failure
+    };
+  }
+}
+
+// Function to generate a narrative digest summary
+export async function generateDigestSummary(
+  aiMemory: string,
+  digestType: 'weekly' | 'monthly' | 'quarterly'
+): Promise<string> {
+  const prompt = `Based on the following AI Teacher\'s Notes, please generate a concise narrative summary for a **${digestType}** student progress report. Focus on overall trends, significant achievements, persistent challenges, and potential focus areas for the upcoming period. Keep the tone encouraging but realistic.
+
+--- START AI TEACHER\'S NOTES ---
+${aiMemory}
+--- END AI TEACHER\'S NOTES ---
+
+Generate only the narrative summary text (markdown format allowed).`;
+
+  try {
+    console.log(`Generating ${digestType} digest summary from AI memory...`);
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const summaryText = response.text();
+    console.log(`AI ${digestType} digest summary generated successfully.`);
+    return summaryText.trim();
+  } catch (error) {
+    console.error(`Error generating ${digestType} AI digest summary:`, error);
+    return `Error: Could not generate AI summary for the ${digestType} report.`; // Fallback message
+  }
+}
