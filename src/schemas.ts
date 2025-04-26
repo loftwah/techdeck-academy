@@ -76,6 +76,107 @@ export const StudentProfileSchema = z.object({
     // studentId: z.string().uuid(), 
 });
 
+// Schema for LetterInsights
+export const LetterInsightsSchema = z.object({
+    strengths: z.array(z.string()).optional(),
+    weaknesses: z.array(z.string()).optional(),
+    topics: z.array(z.string()).optional(),
+    sentiment: z.enum(['positive', 'negative', 'neutral']).optional(),
+    skillLevelAdjustment: z.number().optional(),
+    flags: z.array(z.string()).optional()
+}).strict(); // Use strict to prevent unexpected fields in insights
+
+// Schema for LetterResponse
+export const LetterResponseSchema = z.object({
+    content: z.string().min(1, { message: "Letter response content cannot be empty" }),
+    // Ensure insights matches the schema, but allow it to be missing or empty {} 
+    // Use .default({}) to handle cases where AI might omit the insights key entirely
+    insights: LetterInsightsSchema.optional().default({})
+}).strict(); // Use strict to prevent unexpected top-level fields
+
+// --- Stats Schemas ---
+
+// Reusable schema for ISO date strings (if not already defined globally)
+// const isoDateTimeString = z.string().datetime({ message: "Invalid ISO 8601 date-time string" });
+
+const DailyStatsSchema = z.object({
+    date: isoDateTimeString,
+    count: z.number().int().min(0),
+    details: z.record(z.unknown()) // Allow any structure for details
+});
+
+const WeeklyStatsSchema = z.object({
+    weekStart: isoDateTimeString,
+    weekEnd: isoDateTimeString,
+    count: z.number().int().min(0),
+    summary: z.record(z.unknown()) // Allow any structure for summary
+});
+
+const MonthlyStatsSchema = z.object({
+    month: z.string(), // Could add regex if format is fixed, e.g., YYYY-MM
+    count: z.number().int().min(0),
+    summary: z.record(z.unknown()) // Allow any structure for summary
+});
+
+const TopicProgressSchema = z.object({
+    completedChallenges: z.number().int().min(0),
+    lastActivity: isoDateTimeString
+});
+
+const ActivityPatternSchema = z.object({
+    daysActive: z.number().int().min(0),
+    streakCurrent: z.number().int().min(0),
+    streakLongest: z.number().int().min(0),
+    preferredTimes: z.array(z.string()), // Assuming times are strings like "HH:MM"
+    lastActivity: isoDateTimeString.optional()
+});
+
+export const StatsSchema = z.object({
+    meta: z.object({
+        lastCompaction: isoDateTimeString,
+        version: z.number().int().positive(),
+        retentionPolicy: z.object({
+            daily: z.number().int().min(0),
+            weekly: z.number().int().min(0),
+            monthly: z.number().int().min(0)
+        })
+    }),
+    challenges: z.object({
+        daily: z.array(DailyStatsSchema),
+        weekly: z.array(WeeklyStatsSchema),
+        monthly: z.array(MonthlyStatsSchema)
+    }),
+    submissions: z.object({
+        daily: z.array(DailyStatsSchema),
+        weekly: z.array(WeeklyStatsSchema),
+        monthly: z.array(MonthlyStatsSchema)
+    }),
+    topics: z.record(TopicProgressSchema), // Record<string, TopicProgress>
+    activity: ActivityPatternSchema
+});
+
+// --- Summary Schemas ---
+
+// Re-use ChallengeSchema if it's imported or define it if needed
+// Assuming ChallengeSchema is available from earlier in the file
+
+const ArchivedChallengeSchema = z.object({
+    id: z.string().regex(/^CC-\d{3,}$/, { message: "Invalid Challenge ID format" }),
+    title: z.string().min(1),
+    createdAt: isoDateTimeString,
+    archivedAt: isoDateTimeString
+});
+
+export const SummarySchema = z.object({
+    meta: z.object({
+        lastUpdated: isoDateTimeString,
+        activeCount: z.number().int().min(0),
+        archivedCount: z.number().int().min(0)
+    }),
+    activeChallenges: z.array(ChallengeSchema), // Use existing ChallengeSchema
+    archivedChallenges: z.array(ArchivedChallengeSchema)
+});
+
 // You can also infer TypeScript types from schemas if needed:
 // export type Challenge = z.infer<typeof ChallengeSchema>;
 // export type Submission = z.infer<typeof SubmissionSchema>;

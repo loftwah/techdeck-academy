@@ -14,7 +14,7 @@ import type {
   ChallengeType
 } from '../types.js'
 // Import Zod schemas
-import { ChallengeSchema as ZodChallengeSchema, FeedbackSchema as ZodFeedbackSchema } from '../schemas.js';
+import { ChallengeSchema as ZodChallengeSchema, FeedbackSchema as ZodFeedbackSchema, LetterResponseSchema } from '../schemas.js';
 import { ZodError } from 'zod'; // Ensure ZodError is imported
 
 // Initialize Gemini AI
@@ -537,7 +537,7 @@ export async function generateLetterResponse(
 }
 
 // Ensure parseLetterResponse function definition exists
-// MODIFIED: Throws error on failure instead of returning fallback object
+// MODIFIED: Uses Zod schema for parsing and validation
 export async function parseLetterResponse(responseText: string): Promise<LetterResponse> {
   let text = responseText;
   // Extract JSON from markdown code block if present
@@ -548,23 +548,22 @@ export async function parseLetterResponse(responseText: string): Promise<LetterR
   }
 
   try {
-    const parsed = JSON.parse(text) as LetterResponse;
-    // Basic validation (can be expanded)
-    if (!parsed.content || typeof parsed.content !== 'string') {
-      // Throw specific error for invalid content
-      throw new Error('Invalid or missing content field');
-    }
-    if (!parsed.insights || typeof parsed.insights !== 'object') {
-        // If insights are missing, create an empty object (this might be acceptable)
-        console.warn('Insights object missing in AI response, creating empty one.');
-        parsed.insights = {}; 
-    }
+    const jsonData = JSON.parse(text);
+    // Use Zod schema to parse and validate
+    const parsed = LetterResponseSchema.parse(jsonData);
+    // Zod handles default for insights if missing/undefined
     return parsed;
   } catch (error) {
-    console.error('Error parsing AI letter response:', error);
+    console.error('Error parsing or validating AI letter response:', error);
     console.error('Raw AI response text:', responseText);
-    // Throw an error instead of returning a fallback object
-    throw new Error(`Failed to parse JSON from AI letter response: ${error instanceof Error ? error.message : String(error)}`);
+    // Throw a more specific error message, including Zod issues if available
+    let errorMessage = 'Failed to parse/validate JSON from AI letter response.';
+    if (error instanceof ZodError) {
+      errorMessage += ` Validation Issues: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`;
+    } else if (error instanceof Error) {
+      errorMessage += ` Error: ${error.message}`;
+    }
+    throw new Error(errorMessage);
   }
 }
 

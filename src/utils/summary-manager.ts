@@ -1,9 +1,12 @@
 import { promises as fs } from 'fs'
 import path from 'path'
 import type { Summary, Challenge } from '../types.js'
+import { readJsonFileWithSchema, writeJsonFileWithSchema } from './file-operations.js'
+import { SummarySchema } from '../schemas.js'
 import { PATHS } from './files.js'
 
-const SUMMARY_FILE = path.join('challenges', 'summary.json')
+// Path relative to DATA_DIR used by file-operations
+const SUMMARY_FILE_PATH = path.join('progress', 'summary.json')
 
 // Default summary structure
 const DEFAULT_SUMMARY: Summary = {
@@ -16,61 +19,59 @@ const DEFAULT_SUMMARY: Summary = {
   archivedChallenges: []
 }
 
+// Refactored readSummary using the utility
 export async function readSummary(): Promise<Summary> {
   try {
-    const content = await fs.readFile(SUMMARY_FILE, 'utf-8')
-    return JSON.parse(content) as Summary
+    const summary = await readJsonFileWithSchema<Summary>(SUMMARY_FILE_PATH, SummarySchema)
+    return summary ?? DEFAULT_SUMMARY
   } catch (error) {
-    // Return default summary if file doesn't exist
+    console.error(`Error reading or validating summary file (${SUMMARY_FILE_PATH}):`, error)
+    console.warn('Returning default summary due to error.')
     return DEFAULT_SUMMARY
   }
 }
 
+// Refactored writeSummary using the utility
 export async function writeSummary(summary: Summary): Promise<void> {
-  await fs.mkdir(path.dirname(SUMMARY_FILE), { recursive: true })
-  await fs.writeFile(SUMMARY_FILE, JSON.stringify(summary, null, 2))
-}
-
-export async function addChallengeToSummary(challenge: Challenge): Promise<void> {
-  const summary = await readSummary()
-
-  // Add to active challenges
-  summary.activeChallenges.push(challenge)
-  summary.meta.activeCount++
-  summary.meta.lastUpdated = new Date().toISOString()
-
-  await writeSummary(summary)
-}
-
-export async function moveChallengeToArchived(
-  challengeId: string,
-  archivedAt = new Date().toISOString()
-): Promise<void> {
-  const summary = await readSummary()
-
-  // Find the challenge
-  const challengeIndex = summary.activeChallenges.findIndex(c => c.id === challengeId)
-  if (challengeIndex === -1) {
-    throw new Error(`Challenge ${challengeId} not found in active challenges`)
+  try {
+    await writeJsonFileWithSchema<Summary>(SUMMARY_FILE_PATH, summary, SummarySchema)
+    console.log('Summary data saved successfully.')
+  } catch (error) {
+    console.error(`Error writing or validating summary file (${SUMMARY_FILE_PATH}):`, error)
+    throw error
   }
+}
 
-  const challenge = summary.activeChallenges[challengeIndex]
+// --- Functions modifying summary --- 
+// Benefit from validated read/write implicitly
 
-  // Remove from active challenges
-  summary.activeChallenges.splice(challengeIndex, 1)
-  summary.meta.activeCount--
-
-  // Add to archived challenges
-  summary.archivedChallenges.push({
-    id: challenge.id,
-    title: challenge.title,
-    createdAt: challenge.createdAt,
-    archivedAt
-  })
-  summary.meta.archivedCount++
+export async function addActiveChallengeToSummary(challenge: Challenge): Promise<void> {
+  const summary = await readSummary()
+  summary.activeChallenges.push(challenge)
+  summary.meta.activeCount = summary.activeChallenges.length
   summary.meta.lastUpdated = new Date().toISOString()
-
   await writeSummary(summary)
+}
+
+export async function archiveChallengeInSummary(challengeId: string): Promise<void> {
+  const summary = await readSummary()
+  const challengeIndex = summary.activeChallenges.findIndex(c => c.id === challengeId)
+
+  if (challengeIndex !== -1) {
+    const [challengeToArchive] = summary.activeChallenges.splice(challengeIndex, 1)
+    summary.archivedChallenges.push({
+      id: challengeToArchive.id,
+      title: challengeToArchive.title,
+      createdAt: challengeToArchive.createdAt,
+      archivedAt: new Date().toISOString()
+    })
+    summary.meta.activeCount = summary.activeChallenges.length
+    summary.meta.archivedCount = summary.archivedChallenges.length
+    summary.meta.lastUpdated = new Date().toISOString()
+    await writeSummary(summary)
+  } else {
+    console.warn(`Challenge ${challengeId} not found in active summary for archiving.`)
+  }
 }
 
 export async function pruneOldSummaryEntries(thresholdDays: number): Promise<void> {

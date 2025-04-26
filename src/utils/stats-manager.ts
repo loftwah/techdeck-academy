@@ -2,8 +2,10 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import type { Stats, Challenge, Submission, Feedback } from '../types.js'
 import { PATHS } from './files.js'
+import { readJsonFileWithSchema, writeJsonFileWithSchema } from './file-operations.js'
+import { StatsSchema } from '../schemas.js'
 
-const STATS_FILE = path.join('progress', 'stats.json')
+const STATS_FILE_PATH = path.join('progress', 'stats.json')
 
 // Default stats structure
 const DEFAULT_STATS: Stats = {
@@ -37,17 +39,23 @@ const DEFAULT_STATS: Stats = {
 
 export async function readStats(): Promise<Stats> {
   try {
-    const content = await fs.readFile(STATS_FILE, 'utf-8')
-    return JSON.parse(content) as Stats
+    const stats = await readJsonFileWithSchema<Stats>(STATS_FILE_PATH, StatsSchema)
+    return stats ?? DEFAULT_STATS
   } catch (error) {
-    // Return default stats if file doesn't exist
+    console.error(`Error reading or validating stats file (${STATS_FILE_PATH}):`, error)
+    console.warn('Returning default stats due to error.')
     return DEFAULT_STATS
   }
 }
 
 export async function writeStats(stats: Stats): Promise<void> {
-  await fs.mkdir(path.dirname(STATS_FILE), { recursive: true })
-  await fs.writeFile(STATS_FILE, JSON.stringify(stats, null, 2))
+  try {
+    await writeJsonFileWithSchema<Stats>(STATS_FILE_PATH, stats, StatsSchema)
+    console.log('Stats data saved successfully.')
+  } catch (error) {
+    console.error(`Error writing or validating stats file (${STATS_FILE_PATH}):`, error)
+    throw error
+  }
 }
 
 export async function addChallengeStats(challenge: Challenge): Promise<void> {
@@ -91,32 +99,39 @@ export async function addSubmissionStats(
     date,
     count: 1,
     details: {
-      submissionId: submission.challengeId,
+      submissionId: feedback.submissionId ?? submission.challengeId,
     }
   })
 
   // Update activity
-  const today = new Date().toDateString()
-  const lastActive = new Date(stats.activity.lastActivity || 0).toDateString()
+  const todayDate = new Date();
+  const todayString = todayDate.toDateString();
+  const lastActive = stats.activity.lastActivity ? new Date(stats.activity.lastActivity).toDateString() : null;
   
-  if (today !== lastActive) {
-    stats.activity.daysActive++
-    if (today === new Date(lastActive).toDateString() + 1) {
-      stats.activity.streakCurrent++
-      stats.activity.streakLongest = Math.max(
-        stats.activity.streakCurrent,
-        stats.activity.streakLongest
-      )
+  if (todayString !== lastActive) {
+    stats.activity.daysActive++;
+    const yesterday = new Date();
+    yesterday.setDate(todayDate.getDate() - 1);
+    const yesterdayString = yesterday.toDateString();
+
+    if (lastActive === yesterdayString) {
+      stats.activity.streakCurrent++;
     } else {
-      stats.activity.streakCurrent = 1
+      stats.activity.streakCurrent = 1;
     }
+    stats.activity.streakLongest = Math.max(
+      stats.activity.streakCurrent,
+      stats.activity.streakLongest
+    );
   }
 
   // Update preferred times
   const hour = new Date().getHours()
   stats.activity.preferredTimes.push(`${hour}:00`)
-  // Keep only the last 100 times
   stats.activity.preferredTimes = stats.activity.preferredTimes.slice(-100)
+  
+  // Update lastActivity timestamp
+  stats.activity.lastActivity = date
 
   await writeStats(stats)
 }
@@ -184,15 +199,22 @@ function groupByWeek(dailyStats: Array<{ date: string; count: number; details: a
 
 export async function shouldCompactStats(): Promise<boolean> {
   try {
-    const stats = await fs.stat(STATS_FILE)
-    const sizeMB = stats.size / (1024 * 1024)
+    const dataDirRoot = path.resolve(process.cwd(), 'data')
+    const absoluteStatsPath = path.resolve(dataDirRoot, STATS_FILE_PATH)
+    const fileStats = await fs.stat(absoluteStatsPath)
+    const sizeMB = fileStats.size / (1024 * 1024)
     if (sizeMB > 5) return true // Compact if larger than 5MB
 
-    const lastCompaction = (await readStats()).meta.lastCompaction
+    const statsData = await readStats()
+    const lastCompaction = statsData.meta.lastCompaction
     const daysSinceCompaction = 
       (Date.now() - new Date(lastCompaction).getTime()) / (1000 * 60 * 60 * 24)
     return daysSinceCompaction > 7 // Compact if more than 7 days old
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return false
+    }
+    console.error("Error checking if stats need compaction:", error)
     return false
   }
 } 
