@@ -202,11 +202,13 @@ export async function generateFeedbackPrompt(
       `Provide key strengths of the implementation in relation to the student's progress.`,
       `Identify areas for improvement, considering patterns noted in the memory.`,
       `Give specific suggestions for better approaches or refinements.`,
-      `Recommend concrete next steps for improvement, relevant to the student's history.`
+      `Provide a numerical score out of 100 and justify it within your response text.`,
+      `Recommend concrete next steps for improvement, relevant to the student's history.`,
+      `Based on the AI Teacher Notes and this submission, consider if the student might benefit from adjusting their configured difficulty or topic levels in config.ts. If so, gently suggest they review their configuration.`
   ];
 
   // REVISED: Request Markdown output ONLY for qualitative feedback fields.
-  const outputFormatDescription = `Respond using Markdown. Use the following headings EXACTLY, including the double hash marks and the field name, followed by the content on the next line(s). Use bullet points for lists under headings.
+  const outputFormatDescription = `Respond using Markdown. Use the following headings EXACTLY, including the double hash marks and the field name, followed by the content on the next line(s). Use bullet points for lists under headings. Include your score justification naturally within the text under the appropriate headings.
 ## Strengths
 +- [Strength 1]
 +- ...
@@ -217,7 +219,7 @@ export async function generateFeedbackPrompt(
 +- [Suggestion 1]
 +- ...
 ## Improvement Path
-[Recommended next steps or focus areas]
++[Recommended next steps or focus areas]
 DO NOT include headings or fields for 'submissionId' or 'createdAt'. These are handled by the application.`;
 
   return buildPrompt(
@@ -517,6 +519,7 @@ export async function generateLetterResponsePrompt(
       `Respond to the student's questions or comments in your ${mentorProfile.name} persona (${mentorProfile.style}, ${mentorProfile.tone}).`,
       `Use the AI Teacher's Notes, student configuration, and recent correspondence for context.`,
       `Provide clear answers or guidance.`,
+      `Based on the conversation and the AI Teacher Notes, consider if the student might benefit from adjusting their configured difficulty or topic levels in config.ts. If so, gently suggest they review their configuration.`,
       `Generate relevant insights based on the conversation (sentiment, topics, strengths, weaknesses, flags).`
     ];
   }

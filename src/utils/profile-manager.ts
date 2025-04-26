@@ -67,6 +67,97 @@ export async function writeStudentProfile(profileData: StudentProfile): Promise<
   }
 }
 
+// NEW FUNCTION: Encapsulates profile loading, creation, and syncing
+export async function loadOrCreateAndSyncProfile(config: Config): Promise<StudentProfile> {
+    let studentProfile = await readStudentProfile(config);
+    let profileWasCreatedOrModified = false;
+
+    if (!studentProfile) {
+        console.warn('Student profile not found or invalid. Creating default profile based on config.');
+        const now = new Date().toISOString();
+        const initialStatus = config.introductionSubmitted ? 'active' : 'awaiting_introduction';
+
+        studentProfile = {
+            userId: config.githubUsername || 'default-user',
+            name: config.githubUsername || 'Default User',
+            completedChallenges: 0,
+            currentSkillLevel: config.difficulty,
+            lastUpdated: now,
+            status: initialStatus,
+            topicLevels: {},
+            currentChallengeId: undefined,
+        };
+
+        for (const topic in config.topics) {
+            if (!studentProfile.topicLevels) { // Should always be true here, but safe check
+                studentProfile.topicLevels = {};
+            }
+            studentProfile.topicLevels[topic] = { currentLevel: config.topics[topic].currentLevel };
+        }
+        profileWasCreatedOrModified = true;
+        console.log('Default student profile constructed.');
+
+    } else {
+        console.log('Existing profile found. Checking sync status against config...');
+        // Sync logic moved from index.ts
+        let needsSync = false;
+        if (!studentProfile.topicLevels) {
+            studentProfile.topicLevels = {};
+        }
+        const configTopics = Object.keys(config.topics);
+        const profileTopicLevels = studentProfile.topicLevels as Record<string, { currentLevel: number }>; 
+        const profileTopics = Object.keys(profileTopicLevels);
+
+        for (const topic of configTopics) {
+            if (!profileTopicLevels[topic]) {
+                console.log(`Sync: Adding topic '${topic}' to profile from config.`);
+                profileTopicLevels[topic] = { currentLevel: config.topics[topic].currentLevel };
+                needsSync = true;
+            }
+            // Optional: Check if level itself changed? For now, just add/remove topics.
+        }
+        for (const topic of profileTopics) {
+            if (!(topic in config.topics)) {
+                console.log(`Sync: Removing topic '${topic}' from profile (not in config).`);
+                delete profileTopicLevels[topic];
+                needsSync = true;
+            }
+        }
+
+        if (config.githubUsername && studentProfile.userId !== config.githubUsername) {
+            console.log(`Sync: Updating profile userId to match config.githubUsername '${config.githubUsername}'.`);
+            studentProfile.userId = config.githubUsername;
+            needsSync = true;
+        }
+        const expectedName = config.githubUsername || 'Default User';
+        if (studentProfile.name !== expectedName) {
+            console.log(`Sync: Updating profile name to '${expectedName}'.`);
+            studentProfile.name = expectedName;
+            needsSync = true;
+        }
+        
+        // Crucially, do NOT sync status or currentSkillLevel from config here.
+        // Those are managed by intro flow and user edits respectively.
+
+        if (needsSync) {
+            console.log('Profile requires sync with config.');
+            studentProfile.topicLevels = profileTopicLevels; // Ensure the updated object is assigned back
+            studentProfile.lastUpdated = new Date().toISOString();
+            profileWasCreatedOrModified = true;
+        } else {
+            console.log('Profile is already in sync with config (userId, name, topics).');
+        }
+    }
+
+    // Write profile ONLY if it was newly created or modified during sync
+    if (profileWasCreatedOrModified) {
+        console.log('Writing created/updated profile to disk...');
+        await writeStudentProfile(studentProfile); // Handles validation
+    }
+
+    return studentProfile; // Return the definitive profile object
+}
+
 // New function to update the profile status to active
 export async function setProfileStatusActive(config: Config): Promise<void> {
   try {
@@ -187,8 +278,6 @@ export async function updateProfileFromLetterInsights(
     const profile = await readStudentProfile(config)
     if (profile) {
       profile.lastUpdated = now
-      // Optionally update core metrics like skill level IF the insight implies a direct, simple update AND we keep that field
-      // Example: if (insights.skillLevelAdjustment) profile.currentSkillLevel = Math.max(1, Math.min(10, profile.currentSkillLevel + insights.skillLevelAdjustment))
       await writeStudentProfile(profile)
       console.log('Minimal student profile timestamp updated.')
     } else {

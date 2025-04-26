@@ -5,7 +5,7 @@ import * as files from './utils/files.js'
 import * as stats from './utils/stats-manager.js'
 import * as summary from './utils/summary-manager.js'
 import * as profile from './utils/profile-manager.js'
-import { readStudentProfile, writeStudentProfile, loadMentorProfile } from './utils/profile-manager.js'
+import { loadOrCreateAndSyncProfile, loadMentorProfile } from './utils/profile-manager.js'
 import { readAIMemoryRaw } from './utils/ai-memory-manager.js'
 import type { Challenge, Submission, StudentProfile } from './types.js'
 import path from 'path'
@@ -14,88 +14,8 @@ import crypto from 'crypto'
 // Initialize the application
 async function initialize(): Promise<StudentProfile> {
   await files.ensureDirectories()
-  let studentProfileOrNull = await readStudentProfile(config)
-  let studentProfile: StudentProfile;
-
-  if (!studentProfileOrNull) {
-    console.warn('Student profile not found or invalid. Creating default profile.');
-    const now = new Date().toISOString();
-    // Create default profile matching the StudentProfile type
-    // Determine initial status based on config
-    const initialStatus = config.introductionSubmitted ? 'active' : 'awaiting_introduction';
-
-    studentProfile = {
-        userId: config.githubUsername || 'default-user',
-        name: config.githubUsername || 'Default User', // Use name
-        completedChallenges: 0,
-        currentSkillLevel: config.difficulty, 
-        lastUpdated: now,
-        status: initialStatus, 
-        topicLevels: {}, 
-        currentChallengeId: undefined, 
-    };
-    // Populate topicLevels correctly with { currentLevel: number }
-    for (const topic in config.topics) {
-        // Explicitly check/initialize topicLevels inside loop for TS
-        if (!studentProfile.topicLevels) {
-            studentProfile.topicLevels = {};
-        }
-        studentProfile.topicLevels[topic] = { currentLevel: config.topics[topic].currentLevel }; 
-    }
-    await writeStudentProfile(studentProfile); 
-    console.log('Created and saved a default student profile.');
-  } else {
-      studentProfile = studentProfileOrNull;
-      let profileWasModified = false;
-      console.log('Checking profile against current config...');
-
-      // Initialize topicLevels if it's undefined/null
-      if (!studentProfile.topicLevels) {
-          studentProfile.topicLevels = {};
-      }
-
-      const configTopics = Object.keys(config.topics);
-      // Ensure topicLevels is treated as the correct type
-      const profileTopicLevels = studentProfile.topicLevels as Record<string, { currentLevel: number }>; 
-      const profileTopics = Object.keys(profileTopicLevels);
-      
-      for (const topic of configTopics) {
-          if (!profileTopicLevels[topic]) {
-              console.log(`Sync: Adding topic '${topic}' to profile from config.`);
-              // Assign correct { currentLevel: number } object
-              profileTopicLevels[topic] = { currentLevel: config.topics[topic].currentLevel }; 
-              profileWasModified = true;
-          }
-      }
-      for (const topic of profileTopics) {
-          if (!(topic in config.topics)) {
-              console.log(`Sync: Removing topic '${topic}' from profile (not in config).`);
-              delete profileTopicLevels[topic];
-              profileWasModified = true;
-          }
-      }
-      
-      if (config.githubUsername && studentProfile.userId !== config.githubUsername) {
-          console.log(`Sync: Updating profile userId to match config.githubUsername '${config.githubUsername}'.`);
-          studentProfile.userId = config.githubUsername;
-          profileWasModified = true;
-      }
-      // Sync name field if needed
-      const expectedName = config.githubUsername || 'Default User';
-       if (studentProfile.name !== expectedName) {
-          console.log(`Sync: Updating profile name to '${expectedName}'.`);
-          studentProfile.name = expectedName;
-          profileWasModified = true;
-      }
-
-      if (profileWasModified) {
-          studentProfile.lastUpdated = new Date().toISOString(); 
-          console.log('Profile was modified during config sync. Writing updates...');
-          // Assign the potentially modified topicLevels back before writing
-          studentProfile.topicLevels = profileTopicLevels; 
-          await writeStudentProfile(studentProfile); 
-      }
-  }
+  // Load or create the profile, ensuring it's synced with the config
+  const studentProfile = await profile.loadOrCreateAndSyncProfile(config);
   
   const isFirstRun = studentProfile.status === 'awaiting_introduction';
 
