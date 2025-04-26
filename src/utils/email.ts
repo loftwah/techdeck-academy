@@ -257,7 +257,6 @@ ${getGreeting(emailStyle)}
 
 ### Progress Overview
 - Challenges Completed: ${digest.stats.challengesCompleted}
-- Average Score: ${digest.stats.averageScore.toFixed(1)}/100
 
 ### Topic Progress
 ${Object.entries(digest.stats.topicsProgress)

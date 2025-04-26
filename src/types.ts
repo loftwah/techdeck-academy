@@ -130,7 +130,6 @@ export interface Stats {
     monthly: MonthlyStats[]
   }
   topics: Record<string, TopicProgress>
-  scores: ScoreProgression[]
   activity: ActivityPattern
 }
 
@@ -155,14 +154,7 @@ interface MonthlyStats {
 
 interface TopicProgress {
   completedChallenges: number
-  averageScore: number
   lastActivity: string
-}
-
-interface ScoreProgression {
-  date: string
-  score: number
-  challengeId: string
 }
 
 interface ActivityPattern {
@@ -199,7 +191,6 @@ export interface ProgressReport {
   areasForImprovement: string[];
   suggestedNextSteps: string[];
   challengesCompleted: number;
-  averageScore?: number; // Optional, might not always be available
 }
 
 export interface LetterResponse {

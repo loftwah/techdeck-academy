@@ -94,15 +94,7 @@ export async function addSubmissionStats(
     count: 1,
     details: {
       submissionId: submission.challengeId,
-      score: feedback.score
     }
-  })
-
-  // Update scores
-  stats.scores.push({
-    date,
-    score: feedback.score,
-    challengeId: submission.challengeId
   })
 
   // Update activity
