@@ -19,6 +19,7 @@ export const ChallengeSchema = z.object({
     id: z.string().regex(/^CC-\d{3,}$/, { message: "Invalid Challenge ID format (e.g., CC-001)" }),
     title: z.string().min(1, { message: "Title is required" }),
     description: z.string().min(1, { message: "Description is required" }),
+    type: ChallengeTypeSchema,
     requirements: z.array(z.string()).optional().default([]), // Optional array, defaults to empty
     examples: z.array(z.string()).optional().default([]),
     hints: z.array(z.string()).optional().default([]),

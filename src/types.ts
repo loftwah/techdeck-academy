@@ -18,6 +18,7 @@ export interface Challenge {
   id: string
   title: string
   description: string
+  type: ChallengeType
   requirements: string[]
   examples: string[]
   hints?: string[]
@@ -64,7 +65,7 @@ export interface TopicConfig {
 }
 
 // Add ChallengeType definition
-export type ChallengeType = 'coding' | 'iac' | 'question' | 'mcq' | 'design' | 'casestudy';
+export type ChallengeType = 'coding' | 'iac' | 'question' | 'mcq' | 'design' | 'casestudy' | 'project';
 
 export interface Config {
   // Personal information

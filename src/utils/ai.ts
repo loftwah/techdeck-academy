@@ -121,7 +121,7 @@ export async function generateChallengePrompt(
   const availableTypes = config.preferredChallengeTypes && config.preferredChallengeTypes.length > 0 
                          ? config.preferredChallengeTypes 
                          : ['coding'];
-  const selectedType = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+  const selectedType = availableTypes[Math.floor(Math.random() * availableTypes.length)] as ChallengeType;
   console.log(`Selected challenge type: ${selectedType}`);
 
   const contextSections: PromptSection[] = [
@@ -135,7 +135,6 @@ export async function generateChallengePrompt(
   const instructions = [
     `Base the challenge on the student's progress documented in the Teacher's Notes and their preferences, considering the configured topics and their levels.`, // General instruction first
     `Generate a challenge of type: **${selectedType}**.`,
-    `Adhere to the standard Challenge JSON schema structure.`,
     `Ensure difficulty aligns with student notes and preferred difficulty (${config.difficulty}/10).`,
     `Address weaknesses and build on strengths identified in the AI Teacher Notes.`,
     `Avoid directly repeating recent challenge topics.`,
@@ -154,8 +153,27 @@ export async function generateChallengePrompt(
     default: instructions.push(`Reminder for default: Generate a standard coding challenge.`);
   }
 
-  const outputFormatDescription = "Respond ONLY with the JSON object adhering to the Challenge schema.";
-  // We are temporarily not enforcing schema via function calling, but still describe it.
+  // REVISED: Request Markdown output ONLY for AI-generated content fields.
+  const outputFormatDescription = `Respond using Markdown. Use the following headings EXACTLY, including the double hash marks and the field name, followed by the content on the next line(s). Omit optional headings if not applicable:
+## Title
+[Challenge Title Here]
+## Description
+[Detailed Challenge Description Here]
+## Topics
+[Comma-separated List of Relevant Topics Here]
+## Requirements (Optional)
++- [Requirement 1]
++- [Requirement 2]
++...
+## Examples (Optional)
++- [Example 1 or MCQ Option 1]
++- [Example 2 or MCQ Option 2]
++...
+## Hints (Optional)
++- [Hint 1]
++- [Hint 2]
++...
+DO NOT include headings or fields for 'id', 'type', 'difficulty', or 'createdAt'. These are handled by the application.`;
 
   return buildPrompt(
       null, // No specific mentor persona for challenge generation
@@ -209,7 +227,7 @@ export async function generateChallenge(
 ): Promise<Challenge> {
   const prompt = await generateChallengePrompt(config, aiMemory, recentChallenges);
   
-  console.log('Generating challenge...'); // Removed mention of schema temporarily
+  console.log('Generating challenge (expecting Markdown response)...'); // Updated log
   
   const MAX_RETRIES = 3;
   const RETRY_DELAY_MS = 1000; // 1 second
@@ -254,42 +272,58 @@ export async function generateChallenge(
     if (typeof text !== 'string') {
         throw new Error("AI API call returned non-text response during challenge generation.");
     }
-  console.log('Raw AI response:', text);
+  console.log('Raw AI response:\n', text); // Keep raw response log
 
-  // Use Zod schema for parsing and validation
-  let parsedData: any; // Use 'any' temporarily before validation
-  try {
-    // Try parsing directly
-    parsedData = JSON.parse(text);
-  } catch (e) {
-    console.error("Failed to parse JSON directly:", e);
-    
-    // Updated Regex Fallback: Extract content within ```json ... ``` blocks
-    const markdownJsonRegex = /```json\n([\s\S]*?)\n```/;
-    const match = text.match(markdownJsonRegex);
-    
-    if (match && match[1]) {
-      const extractedJson = match[1];
-      try {
-        console.log("Attempting to parse extracted JSON from Markdown block...");
-        parsedData = JSON.parse(extractedJson);
-        console.log("Successfully parsed JSON from Markdown block.");
-      } catch (nestedE) {
-        console.error("Fallback JSON parsing failed.", nestedE);
-        const errorDetails = nestedE instanceof Error ? nestedE.message : String(nestedE);
-        throw new Error(`Extracted JSON from Markdown block was invalid (parse error): ${errorDetails}`);
-      }
-    } else {
-      console.error("Could not find JSON within Markdown block or parse directly.");
-      const errorDetails = e instanceof Error ? e.message : String(e);
-      throw new Error(`AI response did not contain valid JSON and was not in expected Markdown format: ${errorDetails}`);
-    }
+  // --- START NEW MARKDOWN PARSING LOGIC ---
+
+  const parsedData: Partial<Challenge> = {};
+
+  // Helper function to extract content under a heading
+  const extractContent = (heading: string): string | null => {
+    // Match heading exactly, allowing for optional trailing whitespace
+    // Capture content until the next heading or end of string
+    // Dotall (s) flag allows '.' to match newlines
+    const regex = new RegExp(`^## ${heading}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, "im");
+    const match = text.match(regex);
+    return match && match[1] ? match[1].trim() : null;
+  };
+  
+  // Helper function to parse bulleted lists
+  const parseList = (content: string | null): string[] => {
+      if (!content) return [];
+      // Match lines starting with '-' or '*' (allowing leading whitespace)
+      // Capture the text after the bullet and trim it
+      return content.split('\\n')
+          .map(line => line.match(/^\\s*[-*]\\s*(.*)/))
+          .filter(match => match !== null)
+          .map(match => match![1].trim());
+  };
+
+  // Extract mandatory fields that come from AI
+  parsedData.title = extractContent('Title') ?? undefined; // Assign undefined if null
+  parsedData.description = extractContent('Description') ?? undefined;
+  const topicsStr = extractContent('Topics');
+  parsedData.topics = topicsStr ? topicsStr.split(',').map(t => t.trim()).filter(t => t) : [];
+
+  // Extract optional fields (use parseList for arrays)
+  parsedData.requirements = parseList(extractContent('Requirements'));
+  parsedData.examples = parseList(extractContent('Examples'));
+  parsedData.hints = parseList(extractContent('Hints'));
+  
+  // Check if essential fields *parsed from AI* were extracted
+  if (!parsedData.title || !parsedData.description) { // Only check Title and Description from AI
+      console.error("Failed to parse essential Title or Description from AI Markdown response:", parsedData);
+      // Optionally, try to extract SOMEthing or just fail
+      // For now, let's throw a specific error
+      throw new Error(`Failed to parse essential fields (Title, Description) from AI's Markdown response. Check the raw AI response log.`);
   }
 
-  // Now we have parsedData, proceed to augment and validate
+  // --- END NEW MARKDOWN PARSING LOGIC ---
+
+  // Now we have parsedData (from Markdown), proceed to augment and validate
   
   // Create a mutable object to hold challenge data
-  let challengeData: Partial<Challenge> = { ...parsedData };
+  let challengeData: Partial<Challenge> = parsedData; 
 
   // Ensure the challenge has a valid ID (assign if missing) BEFORE validation
   if (!challengeData.id || typeof challengeData.id !== 'string' || !challengeData.id.match(/^CC-\d{3,}$/)) {
@@ -309,23 +343,24 @@ export async function generateChallenge(
   // Ensure createdAt is set BEFORE validation
   challengeData.createdAt = challengeData.createdAt || new Date().toISOString();
   
-  // Initialize optional arrays if missing BEFORE validation
-  // Zod's `default()` handles this, but doing it defensively here is okay too.
-  challengeData.requirements = challengeData.requirements || [];
-  challengeData.examples = challengeData.examples || [];
-  challengeData.hints = challengeData.hints || [];
-  challengeData.topics = challengeData.topics || []; // topics is required by schema, ensure it exists
-
-  // Ensure difficulty is set (using config default if necessary) BEFORE validation
-  if (typeof challengeData.difficulty !== 'number' || challengeData.difficulty < 1 || challengeData.difficulty > 10) {
-      console.warn(`Generated challenge had invalid or missing difficulty (${challengeData.difficulty}). Defaulting to config difficulty: ${config.difficulty}`);
-      challengeData.difficulty = config.difficulty;
-  }
+  // --- ASSIGN LOCALLY CONTROLLED FIELDS --- 
+  // Determine selected type again (or pass it from prompt function if preferred)
+  const allTopics: string[] = Object.keys(config.topics);
+  const availableTypes = config.preferredChallengeTypes && config.preferredChallengeTypes.length > 0 
+                         ? config.preferredChallengeTypes 
+                         : ['coding'];
+  const selectedType = availableTypes[Math.floor(Math.random() * availableTypes.length)] as ChallengeType;
+  challengeData.type = selectedType;
+  
+  // Assign difficulty from config
+  challengeData.difficulty = config.difficulty;
+  // --- END ASSIGN LOCALLY CONTROLLED FIELDS ---
 
   // NOW, validate the augmented object against the Zod schema
   let challenge: Challenge;
   try {
-      challenge = ZodChallengeSchema.parse(challengeData);
+      // Now that Zod schema includes 'type', direct parsing should work
+      challenge = ZodChallengeSchema.parse(challengeData); 
   } catch (zodError) {
       console.error("Zod validation failed after augmenting ID and createdAt:", zodError);
        // Include Zod error details if available
