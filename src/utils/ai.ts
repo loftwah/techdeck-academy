@@ -264,24 +264,30 @@ export async function generateChallenge(
     challenge = ZodChallengeSchema.parse(parsedData); // Validate using Zod
   } catch (e) {
     console.error("Failed to parse/validate Challenge JSON directly:", e);
-    // Attempt regex fallback ONLY IF direct parse failed
-    const jsonRegex = /{[[\s\S]]*}/; 
-    const match = text.match(jsonRegex);
-    if (match && match[0]) {
+    
+    // Updated Regex Fallback: Extract content within ```json ... ``` blocks
+    const markdownJsonRegex = /```json\n([\s\S]*?)\n```/;
+    const match = text.match(markdownJsonRegex);
+    
+    if (match && match[1]) {
+      // match[1] contains the captured JSON string
+      const extractedJson = match[1];
       try {
-        console.log("Attempting to parse/validate extracted JSON as fallback...");
-        const parsedFallback = JSON.parse(match[0]);
+        console.log("Attempting to parse/validate extracted JSON from Markdown block...");
+        const parsedFallback = JSON.parse(extractedJson);
         challenge = ZodChallengeSchema.parse(parsedFallback); // Validate fallback using Zod
+        console.log("Successfully parsed JSON from Markdown block.");
       } catch (nestedE) {
         console.error("Fallback JSON parsing/validation failed.", nestedE);
         // Include Zod error details if available
         const errorDetails = nestedE instanceof Error ? nestedE.message : String(nestedE);
-        throw new Error(`AI response was not valid Challenge JSON, even with fallback parsing: ${errorDetails}`);
+        throw new Error(`Extracted JSON from Markdown block was invalid: ${errorDetails}`);
       }
     } else {
-      // Include original parsing error details if available
+      // If regex doesn't match, throw original error
+      console.error("Could not find JSON within Markdown block.");
       const errorDetails = e instanceof Error ? e.message : String(e);
-      throw new Error(`AI response did not contain valid Challenge JSON: ${errorDetails}`);
+      throw new Error(`AI response did not contain valid Challenge JSON and was not in expected Markdown format: ${errorDetails}`);
     }
   }
 
