@@ -50,11 +50,14 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
           # Get current schedule from config
-          SCHEDULE=$(node -e "
-            import('./dist/index.js').then(({config}) => {
-              console.log(config.schedule);
+          SCHEDULE=$(node -e '
+            import("./dist/index.js").then(({config}) => {
+              console.log(config.schedule.challengeFrequency);
+            }).catch(err => {
+              console.error("Error reading schedule config:", err);
+              process.exit(1);
             });
-          ")
+          ')
           
           # Get current day (0 = Sunday, 1 = Monday, etc.)
           DAY=$(date +%u)
@@ -88,54 +91,52 @@ jobs:
         run: |
           # Use node script to check for challenge files without corresponding feedback
           # FIX: Redirect stdout to /dev/null to silence console.log interfering with shell
-          node -e "
-            import path from 'path';
-            import fs from 'fs/promises';
-            import { PATHS, fileExists } from './dist/utils/files.js'; 
+          # FIX: Use single quotes for node -e argument
+          node -e '
+            import path from "path";
+            import fs from "fs/promises";
+            import os from "os";
+            import { PATHS, fileExists } from "./dist/utils/files.js"; 
             
             async function hasOutstandingChallenge() {
               try {
                 const challengeFiles = await fs.readdir(PATHS.challenges);
                 for (const challengeFile of challengeFiles) {
-                  if (!challengeFile.endsWith('.json')) continue;
-                  const challengeId = path.basename(challengeFile, '.json');
+                  if (!challengeFile.endsWith(".json")) continue;
+                  const challengeId = path.basename(challengeFile, ".json");
                   const feedbackPath = path.join(PATHS.feedback, `${challengeId}.json`);
                   if (!await fileExists(feedbackPath)) {
-                    // console.log(`Outstanding challenge found: ${challengeId}`); // Silenced
                     return true;
                   }
                 }
               } catch (error) {
-                 if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-                   // console.log('Challenges directory does not exist...'); // Silenced
+                 if (error instanceof Error && "code" in error && error.code === "ENOENT") {
                    return false;
                  }
-                 console.error('Error checking for outstanding challenges:', error); // Keep stderr
+                 console.error("Error checking for outstanding challenges:", error);
                  return false; 
               }
-              // console.log('No outstanding challenges found.'); // Silenced
               return false;
             }
 
             hasOutstandingChallenge().then(outstanding => {
-              // FIX: Check if outstanding is actually defined before appending
-              if (typeof outstanding === 'boolean') {
+              if (typeof outstanding === "boolean") {
                  const outputFilePath = process.env.GITHUB_OUTPUT;
                  if (outputFilePath) {
-                   fs.appendFile(outputFilePath, `outstanding_challenge=${outstanding}\\n`);
+                   fs.appendFile(outputFilePath, `outstanding_challenge=${outstanding}${os.EOL}`);
                  } else {
-                   console.error('GITHUB_OUTPUT environment variable not set.');
-                   process.exit(1); // Exit if we cannot write output
+                   console.error("GITHUB_OUTPUT environment variable not set.");
+                   process.exit(1);
                  }
               } else {
-                console.error('hasOutstandingChallenge() resolved with unexpected value:', outstanding);
-                process.exit(1); // Exit with error if value is wrong type
+                console.error("hasOutstandingChallenge() resolved with unexpected value:", outstanding);
+                process.exit(1);
               }
             }).catch(err => {
-              console.error('Error executing hasOutstandingChallenge promise:', err);
-              process.exit(1); // Exit with error
+              console.error("Error executing hasOutstandingChallenge promise:", err);
+              process.exit(1);
             });
-          " > /dev/null
+          ' > /dev/null
 
       - name: Generate and send challenge or welcome
         # Add check for outstanding challenges and ensure schedule allows it OR manual trigger
