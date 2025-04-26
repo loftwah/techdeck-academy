@@ -289,7 +289,7 @@ ${getGreeting(config.emailStyle)}
 
 # Welcome to TechDeck Academy!
 
-I'll be your ${mentorProfile.name} mentor for your journey in learning ${config.subjectAreas.join(', ')}.
+I'll be your ${mentorProfile.name} mentor for your journey in learning ${Object.keys(config.topics).join(', ')}.
 
 ## How This Works
 

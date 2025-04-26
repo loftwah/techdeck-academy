@@ -30,8 +30,7 @@ describe('Email Utilities', () => {
     mentorProfile: 'linus',
     emailStyle: 'technical' as EmailStyle,
     schedule: {
-      challengeFrequency: 'weekly' as Schedule,
-      digestFrequency: 'weekly'
+      challengeFrequency: 'weekly' as Schedule
     },
     archive: {
       enabled: true,
