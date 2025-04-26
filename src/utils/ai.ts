@@ -321,11 +321,24 @@ export async function generateLetterResponsePrompt(
 ): Promise<string> {
   const recentMessages = correspondence.slice(-5).join('\n---\n');
 
-  // Updated prompt to inject AI Memory
-  return `Act as an AI mentor (${mentorProfile.name}) with the following profile:
+  // Check if this is the introductory message
+  const isIntroductory = aiMemory.includes("Initial state. Waiting for first interaction.") || 
+                         question.toLowerCase().includes("to linus") && question.toLowerCase().includes("i'm dean"); // Heuristic check for the example intro
+
+  let initialInstruction = `Act as an AI mentor (${mentorProfile.name}) with the following profile:
 Style: ${mentorProfile.style}
 Tone: ${mentorProfile.tone}
-Expertise: ${mentorProfile.expertise.join(', ')}
+Expertise: ${mentorProfile.expertise.join(', ')}`;
+
+  // Add specific instructions for the introductory response
+  if (isIntroductory) {
+    initialInstruction += `
+
+**Special Instruction for this FIRST interaction:** This is the student's introductory letter. Respond in a welcoming manner. Acknowledge their goals positively. Set expectations according to your persona, but avoid overly harsh criticism *at this stage*. Focus on establishing the mentoring relationship and outlining the next steps.`;
+  }
+
+  // Updated prompt to inject AI Memory
+  return `${initialInstruction}
 
 --- START AI TEACHER'S NOTES ---
 ${aiMemory}
@@ -341,7 +354,7 @@ Recent Correspondence (if any):
 ${recentMessages || 'No recent messages'}
 ---
 
-Please provide a helpful and supportive response in the mentor's style and preferred email style (${config.emailStyle}). Address the student's question directly, using the AI Teacher's Notes for context about their progress and potential struggles. Also, analyze the student's letter for **new** insights (compared to the existing notes) into their understanding, challenges, and mindset.
+Please provide a helpful and supportive response in the mentor's style and preferred email style (${config.emailStyle}). Address the student's question/introduction directly, using the AI Teacher's Notes for context about their progress and potential struggles. Also, analyze the student's letter for **new** insights (compared to the existing notes) into their understanding, challenges, and mindset.
 
 Format your response as a JSON object matching the LetterResponse interface:
 {

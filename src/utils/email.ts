@@ -63,6 +63,11 @@ const customRenderer: Partial<Renderer> = {
     return `<h${depth} style="font-size: ${sizes[depth]}; margin-top: 20px; margin-bottom: 10px; font-weight: 600; color: #2D3748;">${text}</h${depth}>`
   },
 
+  strong({ tokens }) {
+    const text = getTextFromTokens(tokens);
+    return `<strong style="font-weight: bold; color: inherit;">${text}</strong>`;
+  },
+
   code({ text, escaped }) {
     const code = escaped ? text : escapeHtml(text)
     return `<pre style="background-color: #F7FAFC; padding: 16px; border-radius: 8px; overflow-x: auto;"><code>${code}</code></pre>`
