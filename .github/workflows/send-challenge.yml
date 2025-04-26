@@ -84,13 +84,17 @@ jobs:
           node -e "
             import('./dist/index.js').then(async ({initialize, generateChallenge, config, files, profile}) => {
               const studentProfile = await initialize();
-              const shouldGenerateChallenge = config.introductionSubmitted || studentProfile.completedChallenges > 0;
+
+              // Check config flag OR profile status OR if challenges have already been completed
+              const shouldGenerateChallenge = config.introductionSubmitted || 
+                                              studentProfile.status === 'active' || 
+                                              studentProfile.completedChallenges > 0;
               
               if (shouldGenerateChallenge) {
-                console.log('Introduction submitted (per config) or challenges already started. Generating challenge...');
+                console.log('Introduction submitted (config flag), status is active, or challenges already started. Generating challenge...');
                 await generateChallenge();
               } else {
-                console.log('Introduction not submitted (per config) and no challenges completed. Welcome email was sent during initialization.');
+                console.log('Introduction not submitted (config flag), profile status is not active, and no challenges completed. Welcome email was sent during initialization.');
               }
             });
           "

@@ -11,21 +11,49 @@ const DEFAULT_PROFILE: StudentProfile = {
   currentSkillLevel: 1,
   completedChallenges: 0,
   averageScore: 0,
-  lastUpdated: new Date().toISOString()
+  lastUpdated: new Date().toISOString(),
+  status: 'awaiting_introduction' // Default status
 }
 
 export async function readStudentProfile(): Promise<StudentProfile> {
   try {
     const content = await fs.readFile(PROFILE_FILE, 'utf-8')
-    return JSON.parse(content) as StudentProfile
+    let profile = JSON.parse(content) as StudentProfile
+    // Ensure status exists for older profiles
+    if (!profile.status) {
+      profile.status = 'awaiting_introduction' 
+    }
+    return profile
   } catch (error) {
     // Return default profile if file doesn't exist
+    console.log('Student profile not found, creating default profile.')
+    // Ensure the default profile is written back if created
+    await writeStudentProfile(DEFAULT_PROFILE);
     return DEFAULT_PROFILE
   }
 }
 
 export async function writeStudentProfile(profile: StudentProfile): Promise<void> {
   await fs.writeFile(PROFILE_FILE, JSON.stringify(profile, null, 2))
+}
+
+// New function to update the profile status to active
+export async function setProfileStatusActive(): Promise<void> {
+  try {
+    const profile = await readStudentProfile();
+    if (profile.status !== 'active') {
+      profile.status = 'active';
+      profile.lastUpdated = new Date().toISOString();
+      await writeStudentProfile(profile);
+      console.log('Student profile status updated to active.');
+      // Log this significant event to AI memory as well
+      await logAIMemoryEvent('Student status set to ACTIVE (first interaction processed).');
+    } else {
+      console.log('Profile status is already active.');
+    }
+  } catch (error) {
+    console.error('Failed to update profile status to active:', error);
+  }
 }
 
 export async function updateProfileWithFeedback(

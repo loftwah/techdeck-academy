@@ -85,7 +85,7 @@ async function main() {
 
     try {
         // Load necessary context once
-        // const studentProfile = await profileManager.readStudentProfile(); // Keep if needed for non-AI tasks, otherwise remove
+        const studentProfile = await profileManager.readStudentProfile(); // Read profile once at start
         const mentorProfile = await profileManager.loadMentorProfile(config.mentorProfile);
         const aiMemory = await readAIMemoryRaw(); // Read AI memory once
 
@@ -117,6 +117,13 @@ async function main() {
             const success = await processSingleLetter(letterPath, config, aiMemory, mentorProfile);
             if (success) {
                 successCount++;
+                // --- Check if this was the first interaction ---
+                if (studentProfile.status === 'awaiting_introduction') {
+                    console.log('First letter successfully processed, setting profile status to active.');
+                    await profileManager.setProfileStatusActive();
+                    // Reload profile state ONLY IF absolutely necessary for subsequent loops (unlikely here)
+                    // studentProfile = await profileManager.readStudentProfile(); 
+                }
             } else {
                 failureCount++;
             }

@@ -87,16 +87,19 @@ For a more detailed breakdown, see `structure.md`.
     *   Define your desired learning `topics` and your estimated `currentLevel` (1-10) for each.
     *   Adjust `difficulty`, `preferredChallengeTypes`, `mentorProfile`, `emailStyle`, and `schedule` according to your preferences.
     *   Review the `archive` settings.
-    *   **Crucially, to start receiving challenges:** Set `introductionSubmitted: true`. By default, this is `false`, and challenges will not be sent until it is set to `true`.
-5.  **Write Introduction (Optional):**
-    *   If you wish, you can write an introduction file named `introduction.md` and place it in the `letters/to-mentor/` directory.
-    *   When you push this file, the `respond-to-letters.yml` workflow will process it like any other letter: the AI mentor will generate a response based on your config and AI memory, save it to `letters/from-mentor/`, email it to you, and archive your original `introduction.md`.
-    *   **Note:** Adding this file does *not* automatically start challenges. You still need to set `introductionSubmitted: true` in `config.ts`.
+    *   **Starting Challenges (Automatic vs Manual):**
+        *   **Automatic (Recommended):** Leave `introductionSubmitted: false`. Challenges will automatically start after you submit your *first* letter (e.g., an introduction) to the `letters/to-mentor/` directory and it is successfully processed by the `respond-to-letters.yml` workflow.
+        *   **Manual Skip:** If you want to skip writing an introductory letter and start challenges immediately, set `introductionSubmitted: true`.
+5.  **Write First Letter (Optional but Recommended):**
+    *   Create a markdown file (e.g., `introduction.md`, `my-goals.md`) in the `letters/to-mentor/` directory outlining your background, goals, or any initial questions.
+    *   Push this file to your repository.
+    *   The `respond-to-letters.yml` workflow will process it: generate an AI response, email it to you, update the AI's memory (`ai-memory.md`), and archive your original letter.
+    *   **If this is your first letter and `introductionSubmitted` was `false` in your config, this action will automatically update your profile status, enabling challenges to be sent by the `send-challenge.yml` workflow on its next run.**
 6.  **Initial Commit & Push:** Commit your changes (especially to `config.ts` and potentially `.env` *if* you add it to `.gitignore` - recommended) and push to your repository.
 7.  **Enable & Understand GitHub Actions:**
     *   Ensure GitHub Actions are enabled for your repository (usually default).
-    *   **Scheduling:** The `schedule` setting in `config.ts` (e.g., `"daily"`, `"threePerWeek"`, `"weekly"`) determines how often actions like challenge generation should logically occur. The corresponding GitHub Action workflow (e.g., `send-challenge.yml`) might run on a fixed schedule (like daily), but it contains internal logic to check your `config.ts` setting (`introductionSubmitted` must be true and the frequency must align) before proceeding.
-    *   **Manual Triggers:** Most workflows (like `send-challenge.yml`, `generate-digests.yml`) also include a `workflow_dispatch` trigger. This allows you to **manually run the workflow** at any time directly from the "Actions" tab of your repository on GitHub. This is useful for getting your first challenge immediately (after setting `introductionSubmitted: true`) or generating a report on demand. Simply navigate to the Actions tab, select the workflow, and click "Run workflow".
+    *   **Challenge Scheduling (`send-challenge.yml`):** This workflow runs on a schedule (or manually). It will only generate a challenge if a) your profile status is 'active' (set automatically after your first letter is processed) OR b) you have manually set `introductionSubmitted: true` in `config.ts`, AND c) the timing aligns with your configured `challengeFrequency`.
+    *   **Manual Triggers:** Most workflows (like `send-challenge.yml`, `generate-digests.yml`, `respond-to-letters.yml`) include a `workflow_dispatch` trigger. This allows you to manually run them from the "Actions" tab. This is useful for processing a letter immediately or getting your first challenge sooner after your first letter has been processed (or after setting the config flag).
 
 ## 🔄 Resetting Your Progress
 
@@ -129,7 +132,7 @@ This script will:
 2.  Delete the same files and directories listed in Manual Step 2.
 3.  Print a reminder of the deleted items.
 
-**Important:** After running the script, you **still need to manually commit and push** the changes (Manual Step 3) to finalize the reset in your repository. Note that resetting will also set `introductionSubmitted` back to `false` in `config.ts` if the script modifies that file (or you'll need to manually reset it if restoring from a template).
+**Important:** After running the reset script, you **still need to manually commit and push** the changes to finalize the reset. Resetting will clear your profile status, meaning you will need to submit a new first letter (or set the `introductionSubmitted` flag) to start challenges again.
 
 ## 🤝 Contributing
 

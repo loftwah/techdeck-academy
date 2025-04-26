@@ -49,6 +49,7 @@ export interface StudentProfile {
   completedChallenges: number;
   averageScore?: number;
   lastUpdated: string;
+  status?: 'awaiting_introduction' | 'active'; // Track user state
 }
 
 // Configuration Types
