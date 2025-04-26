@@ -1,0 +1,46 @@
+{{!-- Email template for sending feedback on a submission --}}
+{{greeting}}
+
+<h1>Feedback for: {{challenge.title}}</h1>
+
+{{#if feedback.strengths}}
+<h2>Strengths</h2>
+<ul>
+  {{#each feedback.strengths}}
+    <li>{{this}}</li>
+  {{/each}}
+</ul>
+{{else}}
+<p>No specific strengths noted in this feedback.</p>
+{{/if}}
+
+{{#if feedback.weaknesses}}
+<h2>Areas for Improvement</h2>
+<ul>
+  {{#each feedback.weaknesses}}
+    <li>{{this}}</li>
+  {{/each}}
+</ul>
+{{else}}
+<p>No specific areas for improvement noted in this feedback.</p>
+{{/if}}
+
+{{#if feedback.suggestions}}
+<h2>Suggestions</h2>
+<ul>
+  {{#each feedback.suggestions}}
+    <li>{{this}}</li>
+  {{/each}}
+</ul>
+{{else}}
+<p>No specific suggestions provided this time.</p>
+{{/if}}
+
+{{#if feedback.improvementPath}}
+<h2>Next Steps</h2>
+<p>{{feedback.improvementPath}}</p>
+{{else}}
+<p>Review the suggestions and try applying them to future challenges.</p>
+{{/if}}
+
+<p>Keep up the great work! 💪</p> 

@@ -126,28 +126,28 @@ export async function formatFeedbackEmail(
   challenge: Challenge,
   emailStyle: EmailStyle
 ): Promise<{ subject: string; html: string }> {
-  // TODO: Refactor using Handlebars template 'feedback.hbs'
-  let markdown = getGreeting(emailStyle);
-  markdown += `\n\n# Feedback for: ${challenge.title}`;
+  try {
+    const template = await loadAndCompileTemplate('feedback');
 
-  // Using old helpers temporarily - replace with template rendering
-  const createBulletedList = (items: string[] | undefined): string => items && items.length > 0 ? items.map(item => `- ${item}`).join('\n') : 'None provided';
-  const createEmailSection = (title: string, content: string | undefined, level: number = 2): string => content ? `\n## ${title}\n${content}\n` : '';
-  
-  markdown += createEmailSection('Strengths', createBulletedList(feedback.strengths), 2);
-  markdown += createEmailSection('Areas for Improvement', createBulletedList(feedback.weaknesses), 2);
-  markdown += createEmailSection('Suggestions', createBulletedList(feedback.suggestions), 2);
-  markdown += createEmailSection('Next Steps', feedback.improvementPath, 2);
+    // Prepare data for the template
+    const templateData = {
+      greeting: getGreeting(emailStyle),
+      challenge: challenge,
+      feedback: feedback
+    };
 
-  markdown += '\n\nKeep up the great work! 💪';
+    const renderedContent = template(templateData);
+    const finalHtml = baseTemplateWrapper(renderedContent);
+    validateEmailContent({ subject: `Feedback: ${challenge.title}`, html: finalHtml });
 
-  // Still using old markdownToHtml temporarily
-  const markdownToHtml = async (md: string): Promise<string> => `<pre>${escapeHtml(md)}</pre>`; // Placeholder
-
-  return {
-    subject: `Feedback: ${challenge.title}`,
-    html: baseTemplateWrapper(await markdownToHtml(markdown))
-  };
+    return {
+      subject: `Feedback: ${challenge.title}`,
+      html: finalHtml
+    };
+  } catch (error) {
+    console.error('Error formatting feedback email:', error);
+    throw new Error(`Failed to format feedback email: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 export async function formatDigestEmail(
