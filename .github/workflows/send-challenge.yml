@@ -87,46 +87,55 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
           # Use node script to check for challenge files without corresponding feedback
+          # FIX: Redirect stdout to /dev/null to silence console.log interfering with shell
           node -e "
             import path from 'path';
             import fs from 'fs/promises';
-            // Assuming files utilities are accessible after build in dist/utils/files.js
-            // Need to adjust the import path based on actual build output structure
             import { PATHS, fileExists } from './dist/utils/files.js'; 
             
             async function hasOutstandingChallenge() {
               try {
                 const challengeFiles = await fs.readdir(PATHS.challenges);
                 for (const challengeFile of challengeFiles) {
-                  if (!challengeFile.endsWith('.json')) continue; // Skip non-json files
+                  if (!challengeFile.endsWith('.json')) continue;
                   const challengeId = path.basename(challengeFile, '.json');
-                  // Assuming feedback is named exactly like the challenge ID + .json in the feedback dir
                   const feedbackPath = path.join(PATHS.feedback, `${challengeId}.json`);
                   if (!await fileExists(feedbackPath)) {
-                    console.log(`Outstanding challenge found: ${challengeId} (no feedback file at ${feedbackPath})`);
-                    return true; // Found an outstanding challenge
+                    // console.log(`Outstanding challenge found: ${challengeId}`); // Silenced
+                    return true;
                   }
                 }
               } catch (error) {
-                 // If challenges dir doesn't exist, there are no outstanding challenges
                  if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-                   console.log('Challenges directory does not exist, assuming no outstanding challenges.');
+                   // console.log('Challenges directory does not exist...'); // Silenced
                    return false;
                  }
-                 // Log other errors but assume no outstanding challenge to avoid blocking unnecessarily
-                 console.error('Error checking for outstanding challenges:', error);
+                 console.error('Error checking for outstanding challenges:', error); // Keep stderr
                  return false; 
               }
-              console.log('No outstanding challenges found.');
-              return false; // No outstanding challenges found
+              // console.log('No outstanding challenges found.'); // Silenced
+              return false;
             }
 
             hasOutstandingChallenge().then(outstanding => {
-              console.log(`Setting outstanding_challenge output to: ${outstanding}`);
-              // Use GITHUB_OUTPUT to pass result to next steps
-              fs.appendFile(process.env.GITHUB_OUTPUT || '', `outstanding_challenge=${outstanding}\\n`);
+              // FIX: Check if outstanding is actually defined before appending
+              if (typeof outstanding === 'boolean') {
+                 const outputFilePath = process.env.GITHUB_OUTPUT;
+                 if (outputFilePath) {
+                   fs.appendFile(outputFilePath, `outstanding_challenge=${outstanding}\\n`);
+                 } else {
+                   console.error('GITHUB_OUTPUT environment variable not set.');
+                   process.exit(1); // Exit if we cannot write output
+                 }
+              } else {
+                console.error('hasOutstandingChallenge() resolved with unexpected value:', outstanding);
+                process.exit(1); // Exit with error if value is wrong type
+              }
+            }).catch(err => {
+              console.error('Error executing hasOutstandingChallenge promise:', err);
+              process.exit(1); // Exit with error
             });
-          "
+          " > /dev/null
 
       - name: Generate and send challenge or welcome
         # Add check for outstanding challenges and ensure schedule allows it OR manual trigger
