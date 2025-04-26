@@ -8,6 +8,7 @@ import * as email from '../utils/email.js';
 import * as files from '../utils/files.js'; // For archiving and directory management
 import { readAIMemoryRaw } from '../utils/ai-memory-manager.js'; // Import memory reader
 import type { StudentProfile, Config, MentorProfile, LetterResponse } from '../types.js';
+import { readStudentProfile, writeStudentProfile } from '../utils/profile-manager.js'; // Added writeStudentProfile
 
 async function processSingleLetter(letterPath: string, config: Config, aiMemory: string, mentor: MentorProfile, studentStatus: string): Promise<boolean> {
     console.log(`Processing letter: ${letterPath}`);
@@ -93,13 +94,37 @@ async function main() {
         // Load necessary context once
         const mentorProfile = await profileManager.loadMentorProfile(config.mentorProfile);
         const aiMemory = await readAIMemoryRaw(); // Read AI memory once
-        let studentProfile = await profileManager.readStudentProfile(config); // Read profile once at start
+        let studentProfile = await profileManager.readStudentProfile(config); // Try reading profile
 
-        // Check if profile loaded
+        // Check if profile loaded, if not, create a default one
         if (!studentProfile) {
-            console.error("CRITICAL: Failed to load or validate student profile. Cannot process letters.");
-            // TODO: Send error email?
-            process.exit(1); // Exit with error
+            console.warn('Student profile not found or invalid. Creating default profile for letter processing.');
+            const now = new Date().toISOString();
+            // Create default profile matching the StudentProfile type
+            studentProfile = {
+                userId: config.githubUsername || 'default-user',
+                name: config.githubUsername || 'Default User',
+                completedChallenges: 0,
+                averageScore: 0,
+                currentSkillLevel: config.difficulty,
+                lastUpdated: now,
+                status: 'awaiting_introduction', // Initial status
+                topicLevels: {},
+                currentChallengeId: undefined,
+            };
+            // Populate topicLevels correctly
+            for (const topic in config.topics) {
+                if (!studentProfile.topicLevels) {
+                    studentProfile.topicLevels = {};
+                }
+                studentProfile.topicLevels[topic] = { currentLevel: config.topics[topic].currentLevel };
+            }
+            await writeStudentProfile(studentProfile); // Save the new profile
+            console.log('Created and saved a default student profile during letter processing.');
+
+            // No need to exit anymore if we create the profile successfully.
+            // console.error("CRITICAL: Failed to load or validate student profile. Cannot process letters.");
+            // process.exit(1); // REMOVED
         }
 
         if (!mentorProfile) {
