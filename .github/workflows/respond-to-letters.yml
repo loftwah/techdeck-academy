@@ -97,7 +97,7 @@ jobs:
         run: |
           git config --local user.email "academy@techdeck.life"
           git config --local user.name "TechDeck Academy Bot"
-          # Add generated response, archived original, updated profile AND ai-memory
-          git add letters/from-mentor/ archive/letters/to-mentor/ student-profile.json ai-memory.md
+          # Add generated response, CORRECT archived original path, updated profile AND ai-memory
+          git add letters/from-mentor/ archive/letters/ student-profile.json ai-memory.md
           git commit -m "Respond to student letters and update profile" || echo "No changes to commit"
           git push 
