@@ -97,10 +97,8 @@ jobs:
         run: |
           git config --local user.email "academy@techdeck.life"
           git config --local user.name "TechDeck Academy Bot"
-          # Add generated response, CORRECT archived original path, updated profile AND ai-memory
-          # Use data/ prefix and add specific file patterns
-          git add data/student-profile.json data/ai-memory.md data/letters/from-mentor/*.md data/archive/letters/*/*.md
-          # Add [skip ci] to prevent triggering this workflow again from its own commit
+          # Add generated/updated files using root-level paths
+          git add ai-memory.md student-profile.json letters/from-mentor/*.md archive/letters/*/*.md
           git commit -m "Respond to student letters and update profile [skip ci]" || echo "No changes to commit"
           git push
         env:

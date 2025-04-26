@@ -4,17 +4,18 @@ import type { Challenge, Submission, Feedback } from '../types.js'
 import { ChallengeSchema, SubmissionSchema, FeedbackSchema } from '../schemas.js'
 import { readJsonFileWithSchema, writeJsonFileWithSchema } from './file-operations.js'
 
-// Base paths for different file types
-const PATHS = {
+// Define the base data directory
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+
+// Base paths RELATIVE to the DATA_DIR
+const RELATIVE_PATHS = {
   challenges: 'challenges',
-  studentsBase: 'students',
   submissions: 'submissions',
   feedback: 'feedback',
-  profiles: (studentId: string) => path.join(PATHS.studentsBase, studentId),
+  profiles: 'profiles', // Base directory for profiles
   letters: {
     toMentor: 'letters/to-mentor',
-    fromMentor: 'letters/from-mentor',
-    archive: 'letters/archive'
+    fromMentor: 'letters/from-mentor'
   },
   archive: {
     challenges: 'archive/challenges',
@@ -30,38 +31,44 @@ const PATHS = {
   }
 } as const
 
+// Helper function to get full path within data directory
+export function getDataPath(...subpaths: string[]): string {
+  return path.join(DATA_DIR, ...subpaths);
+}
+
+// Export the constants if they need to be used directly elsewhere (adjust as needed)
+export const PATHS = RELATIVE_PATHS; 
+export { DATA_DIR };
+
 // Ensure directories exist
 export async function ensureDataDirectories(): Promise<void> {
-  const allPaths = [
-    PATHS.challenges,
-    PATHS.submissions,
-    PATHS.feedback,
-    PATHS.studentsBase,
-    PATHS.letters.toMentor,
-    PATHS.letters.fromMentor,
-    PATHS.letters.archive,
-    PATHS.archive.challenges,
-    PATHS.archive.submissions,
-    PATHS.archive.feedback,
-    PATHS.archive.letters,
-    PATHS.progress.weekly,
-    PATHS.progress.monthly,
-    PATHS.progress.quarterly,
-    PATHS.progress.cleanupReports
-  ]
+  // Flatten the nested paths
+  const getAllPaths = (obj: object): string[] => {
+    let paths: string[] = [];
+    Object.values(obj).forEach(value => {
+      if (typeof value === 'string') {
+        paths.push(value);
+      } else if (typeof value === 'object') {
+        paths = paths.concat(getAllPaths(value));
+      }
+    });
+    return paths;
+  };
+  const relativePaths = getAllPaths(RELATIVE_PATHS);
 
-  for (const dirPath of allPaths) {
+  for (const dirPath of relativePaths) {
     try {
-      const dataDirRoot = path.resolve(process.cwd(), 'data')
-      await fs.mkdir(path.resolve(dataDirRoot, dirPath), { recursive: true })
+      // Use the helper to get the full path
+      await fs.mkdir(getDataPath(dirPath), { recursive: true }); 
     } catch (error) {
-      console.error(`Failed to ensure directory ${dirPath}:`, error)
+      console.error(`Failed to ensure directory ${getDataPath(dirPath)}:`, error);
     }
   }
 }
 
 // Challenge operations
 export function getChallengeFilePath(challengeId: string): string {
+  // Use helper function
   return path.join(PATHS.challenges, `${challengeId}.json`)
 }
 
