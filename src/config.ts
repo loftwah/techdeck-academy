@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Config, MentorProfile, EmailStyle, Schedule, SubjectArea, ChallengeType } from './types.js'
+import { Config, MentorProfile, EmailStyle, Schedule, ChallengeType } from './types.js'
 
 // Environment variable validation schema
 const envSchema = z.object({
@@ -17,28 +17,38 @@ export const config: Config = {
   githubUsername: 'loftwah',
 
   // Learning preferences
-  subjectAreas: ['programming', 'devops', 'aws'],
   topics: {
-    programming: {
-      'typescript': { currentLevel: 3 },
-      'javascript': { currentLevel: 4 },
-      'python': { currentLevel: 2 }
-    },
-    devops: {
-      'docker': { currentLevel: 2 },
-      'kubernetes': { currentLevel: 1 },
-      'ci-cd': { currentLevel: 3 }
-    },
-    aws: {
-      'ec2': { currentLevel: 3 },
-      'rds': { currentLevel: 2 },
-      's3': { currentLevel: 4 }
-    }
-    // Add other subject areas and topics as needed
+    // Programming
+    'typescript': { currentLevel: 3 },
+    'javascript': { currentLevel: 4 },
+    'python': { currentLevel: 2 },
+    // Add others like:
+    // 'ruby': { currentLevel: 2 },
+    // 'golang': { currentLevel: 2 },
+    
+    // DevOps / Infra
+    'docker': { currentLevel: 2 },
+    'kubernetes': { currentLevel: 1 },
+    'ci-cd': { currentLevel: 3 },
+    'terraform': { currentLevel: 2 },
+    'github-actions': { currentLevel: 3 },
+    'cloudflare': { currentLevel: 2 },
+    'scaling-strategies': { currentLevel: 1 },
+    
+    // AWS
+    'aws-ec2': { currentLevel: 3 },
+    'aws-rds': { currentLevel: 2 },
+    'aws-s3': { currentLevel: 4 },
+    // 'aws-elasticache': { currentLevel: 2 },
+
+    // Security
+    'security-hardening': { currentLevel: 2 },
+    'aws-iam-policies': { currentLevel: 2 }
+    // Add any other topic freely
   },
-  difficulty: 5,
+  difficulty: 6,
   sessionLength: 60,
-  preferredChallengeTypes: ['coding', 'question', 'iac', 'mcq'] as ChallengeType[],
+  preferredChallengeTypes: ['coding', 'question', 'iac', 'mcq', 'design', 'casestudy'] as ChallengeType[],
 
   // Style preferences
   mentorProfile: 'linus',

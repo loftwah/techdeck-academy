@@ -58,16 +58,14 @@ const ChallengeSchema = {
   required: ['id', 'title', 'description', 'difficulty', 'topics', 'createdAt'] 
 };
 
-// Updated generateChallengePrompt to handle challenge types
+// Updated generateChallengePrompt to handle flattened topics and remove subjectAreas
 export async function generateChallengePrompt(
   config: Config,
   aiMemory: string,
   recentChallenges: Challenge[]
 ): Promise<string> {
-  const allTopics: string[] = [];
-  Object.entries(config.topics).forEach(([category, topics]) => {
-    Object.keys(topics).forEach(topic => allTopics.push(topic));
-  });
+  // Get all configured topics directly from the flattened structure
+  const allTopics: string[] = Object.keys(config.topics); 
 
   // --- Select Challenge Type ---
   // Default to coding if not specified or empty
@@ -81,8 +79,7 @@ export async function generateChallengePrompt(
   const context = {
     recentTopics: recentChallenges.map(c => c.topics).flat(),
     preferredDifficulty: config.difficulty,
-    allConfiguredTopics: allTopics,
-    subjectAreas: config.subjectAreas
+    allConfiguredTopics: allTopics, // Use flattened list
   };
 
   // --- Build Prompt with Type-Specific Instructions ---
@@ -93,13 +90,13 @@ ${aiMemory}
 --- END AI TEACHER'S NOTES ---
 
 Student Preferences & Configuration:
-Subject Areas: ${context.subjectAreas.join(', ')}
+Configured Topics & Levels: ${JSON.stringify(config.topics)} 
 All Available Topics: ${context.allConfiguredTopics.join(', ')}
 Preferred Difficulty: ${context.preferredDifficulty}/10
 Recent Challenge Topics (Avoid direct repeats): ${context.recentTopics.join(', ') || 'No recent challenges'}
 Preferred Challenge Types: ${availableTypes.join(', ')}
 
-Base the challenge on the student's progress documented in the Teacher's Notes and their preferences.
+Base the challenge on the student's progress documented in the Teacher's Notes and their preferences, considering the configured topics and their levels.
 `;
 
   // Add type-specific generation instructions
@@ -110,7 +107,7 @@ Instructions for 'coding' type:
 - Create a coding exercise with a clear problem statement in 'description'.
 - Provide specific technical requirements in the 'requirements' array.
 - Include illustrative code examples (input/output) in the 'examples' array.
-- Ensure it matches the student's subject areas (e.g., programming languages).
+- Ensure it aligns with the student's configured topics (e.g., programming languages).
 `;
       break;
     case 'iac':
@@ -119,7 +116,7 @@ Instructions for 'iac' type:
 - Create a practical Infrastructure as Code task (e.g., Terraform, CloudFormation, Dockerfile, K8s manifest) described in 'description'.
 - List specific resources to create or configure in the 'requirements' array.
 - Provide example configurations or expected outcomes in the 'examples' array.
-- Ensure it aligns with the student's subject areas (e.g., devops, cloud provider like aws).
+- Ensure it aligns with the student's configured topics (e.g., devops, cloud provider like aws).
 `;
       break;
     case 'question':
@@ -152,6 +149,14 @@ Instructions for 'casestudy' type:
 - Present a technical case study or scenario in the 'description'.
 - Pose specific questions about the case study to analyze in the 'requirements' array.
 - The 'examples' array should be empty.
+`;
+       break;
+     case 'project':
+       prompt += `
+Instructions for 'project' type:
+- Outline a small project or multi-step task in the 'description'.
+- Break down the major steps or components in the 'requirements' array.
+- The 'examples' array can be empty or show expected final output structure.
 `;
        break;
     default:

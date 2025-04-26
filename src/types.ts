@@ -12,7 +12,6 @@ export interface MentorProfile {
 
 export type EmailStyle = 'casual' | 'formal' | 'technical' | 'supportive'
 export type Schedule = 'daily' | 'threePerWeek' | 'weekly' | 'manual'
-export type SubjectArea = 'programming' | 'devops' | 'networking' | 'security' | 'cloud' | 'databases' | 'aws';
 
 // Core Types
 export interface Challenge {
@@ -68,8 +67,7 @@ export interface Config {
   githubUsername: string
 
   // Learning preferences
-  subjectAreas: SubjectArea[]
-  topics: Record<string, Record<string, { currentLevel: number; }>>; // Category -> Topic -> Details
+  topics: Record<string, { currentLevel: number }>;
   difficulty: number // 1-10
   sessionLength: number // minutes
   preferredChallengeTypes?: ChallengeType[]; // Added optional array

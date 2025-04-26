@@ -10,7 +10,6 @@ import type {
   Feedback,
   Config,
   EmailStyle,
-  SubjectArea,
   MentorProfile,
   Schedule
 } from '../../types.js'
@@ -20,16 +19,11 @@ describe('Email Utilities', () => {
   const mockConfig: Config = {
     userEmail: 'test@example.com',
     githubUsername: 'testuser',
-    subjectAreas: ['programming', 'devops'] as SubjectArea[],
     topics: {
-      programming: {
-        'typescript': { currentLevel: 3 },
-        'testing': { currentLevel: 2 }
-      },
-      devops: {
-        'docker': { currentLevel: 1 },
-        'github-actions': { currentLevel: 4 }
-      }
+      'typescript': { currentLevel: 3 },
+      'testing': { currentLevel: 2 },
+      'docker': { currentLevel: 1 },
+      'github-actions': { currentLevel: 4 }
     },
     difficulty: 5,
     sessionLength: 60,
