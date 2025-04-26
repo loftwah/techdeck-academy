@@ -27,7 +27,6 @@ const DEFAULT_STATS: Stats = {
     monthly: []
   },
   topics: {},
-  scores: [],
   activity: {
     daysActive: 0,
     streakCurrent: 0,
@@ -71,7 +70,6 @@ export async function addChallengeStats(challenge: Challenge): Promise<void> {
     if (!stats.topics[topic]) {
       stats.topics[topic] = {
         completedChallenges: 0,
-        averageScore: 0,
         lastActivity: date
       }
     }
