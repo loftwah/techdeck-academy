@@ -5,6 +5,22 @@ import * as path from 'path';
 const MAX_CHARS_SNAPSHOT = 500;
 const MAX_CHARS_RECENT_ACTIVITY = 1500;
 const MAX_CHARS_HISTORY = 2000;
+// Define the initial definitions section separately
+const INITIAL_DEFINITIONS = `
+## System Definitions
+
+### Challenge Types
+This application uses the following challenge types:
+*   **coding**: Standard programming exercise with requirements and examples.
+*   **iac**: Infrastructure as Code task (Terraform, Dockerfile, K8s, etc.) involving defining resources.
+*   **question**: Conceptual or short research question requiring a text answer.
+*   **mcq**: Multiple Choice Question with options provided.
+*   **design**: System design scenario requiring outlining a solution.
+*   **casestudy**: Analysis of a provided technical case study.
+*   **project**: Small, multi-step project outline.
+
+---
+`;
 const MEMORY_FILE_PATH = path.join(process.cwd(), 'ai-memory.md');
 
 /**
@@ -29,9 +45,10 @@ export async function readAIMemoryRaw(): Promise<string> {
     } catch (error: any) {
         if (error.code === 'ENOENT') {
             console.warn('ai-memory.md not found, creating a default one.');
+            // Construct default content with definitions
             const defaultContent = `# AI Teacher\'s Notes for [Student Name/ID]
 Last Updated: ${new Date().toISOString()}
-
+${INITIAL_DEFINITIONS}
 ## Current Snapshot (~${MAX_CHARS_SNAPSHOT} chars)
 Initial state. Waiting for first interaction.
 
@@ -58,16 +75,23 @@ Initial state. Waiting for first interaction.
  * @returns An AIMemory object with separated sections.
  */
 function parseAIMemory(rawContent: string): AIMemory {
-    const snapshotMatch = rawContent.match(/## Current Snapshot(?:.*)\n([\s\S]*?)(?=\n## Recent Activity)/);
+    // Match definitions section (optional, might not always be present if manually edited)
+    const definitionsMatch = rawContent.match(/## System Definitions\n([\s\S]*?)\n---/);
+    // Adjust header match to stop before definitions OR snapshot
+    const headerMatch = rawContent.match(/(.*?)(?=\n## (System Definitions|Current Snapshot))/s);
+    // Adjust snapshot match to look for definitions/activity after it
+    const snapshotMatch = rawContent.match(/## Current Snapshot(?:.*)\n([\s\S]*?)(?=\n## Recent Activity|\n---)/);
     const recentActivityMatch = rawContent.match(/## Recent Activity(?:.*)\n([\s\S]*?)(?=\n---)/);
     const historyMatch = rawContent.match(/## Long-Term History & Patterns(?:.*)\n([\s\S]*)/);
-    const headerMatch = rawContent.match(/(.*?)(?=\n## Current Snapshot)/s);
 
+    // Include definitions in the parsed object if needed, or just ignore for reconstruction
+    // For now, we primarily care about header, snapshot, recent, history for updates/reconstruction
     return {
         header: headerMatch ? headerMatch[1].trim() : `# AI Teacher\'s Notes for [Student Name/ID]\nLast Updated: ${new Date().toISOString()}`,
         snapshot: snapshotMatch ? snapshotMatch[1].trim() : '',
         recentActivity: recentActivityMatch ? recentActivityMatch[1].trim() : '',
         history: historyMatch ? historyMatch[1].trim() : ''
+        // definitions: definitionsMatch ? definitionsMatch[1].trim() : '' // Optionally store definitions if needed later
     };
 }
 
@@ -79,11 +103,15 @@ function parseAIMemory(rawContent: string): AIMemory {
  */
 function reconstructAIMemory(memory: AIMemory): string {
     const newTimestamp = new Date().toISOString();
-    // Update the timestamp in the header
     const updatedHeader = memory.header.replace(/Last Updated: .*/, `Last Updated: ${newTimestamp}`);
 
-    return `${updatedHeader}
+    // For now, assume definitions section is static and read from file initially,
+    // or reconstruct based on INITIAL_DEFINITIONS if managing it dynamically.
+    // Simpler approach: rely on initial file creation and manual edits for definitions.
+    // We only reconstruct the parts we modify programmatically.
 
+    return `${updatedHeader}
+${INITIAL_DEFINITIONS} 
 ## Current Snapshot (~${MAX_CHARS_SNAPSHOT} chars)
 ${memory.snapshot}
 

@@ -83,10 +83,11 @@ export async function generateChallengePrompt(
   };
 
   // --- Build Prompt with Type-Specific Instructions ---
-  let prompt = `Generate a challenge of type: **${selectedType}** based on the following context:
+  // References the definitions now included in the main aiMemory context
+  let prompt = `Generate a challenge of type: **${selectedType}** (refer to System Definitions in notes if needed) based on the following context:
 
 --- START AI TEACHER'S NOTES ---
-${aiMemory}
+${aiMemory} 
 --- END AI TEACHER'S NOTES ---
 
 Student Preferences & Configuration:
@@ -99,80 +100,39 @@ Preferred Challenge Types: ${availableTypes.join(', ')}
 Base the challenge on the student's progress documented in the Teacher's Notes and their preferences, considering the configured topics and their levels.
 `;
 
-  // Add type-specific generation instructions
+  // Add concise type-specific generation reminders (full definitions are in memory)
   switch (selectedType) {
     case 'coding':
-      prompt += `
-Instructions for 'coding' type:
-- Create a coding exercise with a clear problem statement in 'description'.
-- Provide specific technical requirements in the 'requirements' array.
-- Include illustrative code examples (input/output) in the 'examples' array.
-- Ensure it aligns with the student's configured topics (e.g., programming languages).
-`;
+      prompt += `\nReminder for 'coding': Focus on problem statement, requirements, examples.`;
       break;
     case 'iac':
-      prompt += `
-Instructions for 'iac' type:
-- Create a practical Infrastructure as Code task (e.g., Terraform, CloudFormation, Dockerfile, K8s manifest) described in 'description'.
-- List specific resources to create or configure in the 'requirements' array.
-- Provide example configurations or expected outcomes in the 'examples' array.
-- Ensure it aligns with the student's configured topics (e.g., devops, cloud provider like aws).
-`;
+      prompt += `\nReminder for 'iac': Focus on task description, resources, example outputs.`;
       break;
     case 'question':
-      prompt += `
-Instructions for 'question' type:
-- Pose a clear conceptual or short research question in the 'description'.
-- The 'requirements' array can be empty or provide brief context/constraints for the answer.
-- The 'examples' array should be empty.
-`;
+      prompt += `\nReminder for 'question': Focus on clear question in description; requirements/examples likely empty.`;
       break;
     case 'mcq':
-      prompt += `
-Instructions for 'mcq' type:
-- Pose a multiple-choice question in the 'description'.
-- List the answer options (e.g., A, B, C, D) in the 'examples' array. Clearly mark the correct answer(s) if possible (e.g., "A) Option 1 (correct)").
-- The 'requirements' array should be empty.
-`;
+      prompt += `\nReminder for 'mcq': Question in description, options in examples.`;
       break;
     case 'design':
-       prompt += `
-Instructions for 'design' type:
-- Describe a system design scenario or problem in the 'description'.
-- List key constraints, components, or areas to focus on in the 'requirements' array.
-- The 'examples' array can be empty or show a snippet of a desired output format (e.g., component list).
-`;
+       prompt += `\nReminder for 'design': Scenario in description, constraints/focus in requirements.`;
        break;
      case 'casestudy':
-       prompt += `
-Instructions for 'casestudy' type:
-- Present a technical case study or scenario in the 'description'.
-- Pose specific questions about the case study to analyze in the 'requirements' array.
-- The 'examples' array should be empty.
-`;
+       prompt += `\nReminder for 'casestudy': Case study in description, questions in requirements.`;
        break;
      case 'project':
-       prompt += `
-Instructions for 'project' type:
-- Outline a small project or multi-step task in the 'description'.
-- Break down the major steps or components in the 'requirements' array.
-- The 'examples' array can be empty or show expected final output structure.
-`;
+       prompt += `\nReminder for 'project': Project outline in description, steps in requirements.`;
        break;
     default:
-      prompt += `
-Instructions for default/unknown type:
-- Generate a standard coding challenge as described for the 'coding' type.
-`;
+      prompt += `\nReminder for default: Generate a standard coding challenge.`;
   }
 
-  prompt += `
-General Requirements:
-- The challenge should be appropriately difficult considering the notes.
-- Help address weaknesses noted in the history.
-- Build upon strengths noted in the history.
-- Not repeat too similar topics from recent challenges listed above.
-- Think step-by-step to create all the necessary fields for the challenge data structure (id, title, description, requirements, examples, hints, difficulty, topics, createdAt), ensuring they fit the requested challenge type. Fill optional fields (hints, requirements, examples) only if appropriate for the type.`;
+  prompt += `\n\nGeneral Requirements:
+- Adhere to the standard Challenge JSON schema structure.
+- Ensure difficulty aligns with student notes.
+- Address weaknesses and build on strengths from notes.
+- Avoid recent topics.
+- Fill optional fields (hints, requirements, examples) only if appropriate for the selected type **${selectedType}**.`; // Emphasize type
 
   return prompt;
 }
