@@ -40,8 +40,8 @@ async function processSingleLetter(letterPath: string, config: Config, aiMemory:
         console.log(`Mentor response saved to: ${responseFilePath}`);
 
         // --- 3. Update Student Profile (via insights -> AI Memory) ---
-        // updateProfileFromLetterInsights now logs details to AI memory and updates minimal profile timestamp
-        await profileManager.updateProfileFromLetterInsights(mentorResponse.insights);
+        // Pass config to updateProfileFromLetterInsights
+        await profileManager.updateProfileFromLetterInsights(config, mentorResponse.insights);
         
         // --- 4. Send Email ---
         if (config.notifications?.emailMentions !== false) { // Check notification preference
@@ -86,9 +86,10 @@ async function main() {
 
     try {
         // Load necessary context once
-        const studentProfile = await profileManager.readStudentProfile(); // Read profile once at start
         const mentorProfile = await profileManager.loadMentorProfile(config.mentorProfile);
         const aiMemory = await readAIMemoryRaw(); // Read AI memory once
+        // Pass config to readStudentProfile
+        let studentProfile = await profileManager.readStudentProfile(config); // Read profile once at start
 
         if (!mentorProfile) {
             // loadMentorProfile logs a warning and returns a default, so this check might not be strictly needed
@@ -122,9 +123,10 @@ async function main() {
                 // --- Check if this was the first interaction ---
                 if (studentProfile.status === 'awaiting_introduction') {
                     console.log('First letter successfully processed, setting profile status to active.');
-                    await profileManager.setProfileStatusActive();
+                    // Pass config to setProfileStatusActive
+                    await profileManager.setProfileStatusActive(config);
                     // Reload profile state ONLY IF absolutely necessary for subsequent loops (unlikely here)
-                    // studentProfile = await profileManager.readStudentProfile(); 
+                    // studentProfile = await profileManager.readStudentProfile(config); 
                 }
             } else {
                 failureCount++;
