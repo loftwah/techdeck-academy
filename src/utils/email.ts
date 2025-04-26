@@ -194,10 +194,121 @@ Keep up the great work! 💪
   }
 }
 
+// Add types for digest data
+interface DigestStats {
+  challengesCompleted: number
+  averageScore: number
+  topicsProgress: Record<string, number>
+  strengths: string[]
+  areasForImprovement: string[]
+}
+
+interface DigestData {
+  type: 'weekly' | 'monthly' | 'quarterly'
+  period: {
+    start: string
+    end: string
+  }
+  stats: DigestStats
+  recommendations: string[]
+  nextSteps: string[]
+}
+
+export async function formatDigestEmail(
+  digest: DigestData,
+  emailStyle: EmailStyle
+): Promise<{ subject: string; html: string }> {
+  const periodType = digest.type.charAt(0).toUpperCase() + digest.type.slice(1)
+  const markdown = `
+${getGreeting(emailStyle)}
+
+# Your ${periodType} Learning Digest
+
+## Period: ${new Date(digest.period.start).toLocaleDateString()} - ${new Date(digest.period.end).toLocaleDateString()}
+
+### Progress Overview
+- Challenges Completed: ${digest.stats.challengesCompleted}
+- Average Score: ${digest.stats.averageScore.toFixed(1)}/100
+
+### Topic Progress
+${Object.entries(digest.stats.topicsProgress)
+  .map(([topic, progress]) => `- ${topic}: ${(progress * 100).toFixed(1)}% complete`)
+  .join('\n')}
+
+### Strengths
+${digest.stats.strengths.map(s => `- ${s}`).join('\n')}
+
+### Areas for Improvement
+${digest.stats.areasForImprovement.map(a => `- ${a}`).join('\n')}
+
+### Recommendations
+${digest.recommendations.map(r => `- ${r}`).join('\n')}
+
+## Next Steps
+${digest.nextSteps.map(s => `- ${s}`).join('\n')}
+
+Keep pushing forward! 🚀
+`
+
+  return {
+    subject: `Your ${periodType} TechDeck Academy Progress Report`,
+    html: baseTemplate(await markdownToHtml(markdown))
+  }
+}
+
+// Add error handling wrapper for email sending
+export async function sendEmailWithRetry(
+  config: Config,
+  content: { subject: string; html: string },
+  maxRetries = 3,
+  retryDelay = 1000
+): Promise<void> {
+  let lastError: Error | null = null
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await sendEmail(config, content)
+      return
+    } catch (error) {
+      lastError = error as Error
+      console.error(`Email sending attempt ${attempt} failed:`, error)
+      
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay * attempt))
+      }
+    }
+  }
+
+  throw new Error(`Failed to send email after ${maxRetries} attempts. Last error: ${lastError?.message}`)
+}
+
+// Add email validation helper
+function validateEmailContent(content: { subject: string; html: string }): void {
+  if (!content.subject || typeof content.subject !== 'string') {
+    throw new Error('Email subject is required and must be a string')
+  }
+  
+  if (!content.html || typeof content.html !== 'string') {
+    throw new Error('Email HTML content is required and must be a string')
+  }
+  
+  if (content.subject.length > 100) {
+    throw new Error('Email subject is too long (max 100 characters)')
+  }
+  
+  if (content.html.length > 100000) {
+    throw new Error('Email HTML content is too long (max 100KB)')
+  }
+}
+
+// Update the sendEmail function with validation
 export async function sendEmail(
   config: Config,
   content: { subject: string; html: string }
 ): Promise<void> {
+  // Validate email content before sending
+  validateEmailContent(content)
+
   try {
     await resend.emails.send({
       from: 'TechDeck Academy <academy@techdeck.life>',
@@ -206,7 +317,22 @@ export async function sendEmail(
       html: content.html,
     })
   } catch (error) {
-    console.error('Failed to send email:', error)
+    // Add more specific error handling
+    if (error instanceof Error) {
+      if (error.message.includes('rate limit')) {
+        throw new Error('Email rate limit exceeded. Please try again later.')
+      } else if (error.message.includes('invalid email')) {
+        throw new Error(`Invalid email address: ${config.userEmail}`)
+      } else if (error.message.includes('unauthorized')) {
+        throw new Error('Invalid API key or authentication failed')
+      }
+    }
     throw error
   }
+}
+
+// Export types only
+export type {
+  DigestData,
+  DigestStats
 } 
