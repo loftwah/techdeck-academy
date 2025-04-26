@@ -15,6 +15,7 @@ if (!apiKey) {
   throw new Error('GEMINI_API_KEY environment variable is not set')
 }
 const genAI = new GoogleGenerativeAI(apiKey)
+
 const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
 export async function generateChallengePrompt(
@@ -90,7 +91,14 @@ export async function generateChallenge(
   const prompt = await generateChallengePrompt(config, studentProfile, recentChallenges)
   const result = await model.generateContent(prompt)
   const response = await result.response
-  const text = response.text()
+  let text = response.text()
+  
+  // Extract JSON from markdown code block if present
+  const jsonRegex = /```json\n([\s\S]*?)\n```/
+  const match = text.match(jsonRegex)
+  if (match && match[1]) {
+    text = match[1]
+  }
   
   // Parse and validate the response as a Challenge object
   // This is a simplified version - you'd want more robust parsing
@@ -107,7 +115,14 @@ export async function generateFeedback(
   const prompt = await generateFeedbackPrompt(challenge, submission, studentProfile, mentorProfile)
   const result = await model.generateContent(prompt)
   const response = await result.response
-  const text = response.text()
+  let text = response.text()
+  
+  // Extract JSON from markdown code block if present
+  const jsonRegex = /```json\n([\s\S]*?)\n```/
+  const match = text.match(jsonRegex)
+  if (match && match[1]) {
+    text = match[1]
+  }
   
   // Parse and validate the response as a Feedback object
   // This is a simplified version - you'd want more robust parsing
