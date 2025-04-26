@@ -298,13 +298,13 @@ I'll be your ${mentorProfile.name} mentor for your journey in learning ${Object.
 
 ## How This Works
 
-1. **Challenges:** Based on your configuration, you'll receive challenges ${scheduleDescription}.
+1. Challenges: Based on your configuration, you'll receive challenges ${scheduleDescription}.
 
-2. **Submissions:** When you complete a challenge, save your solution in the \`submissions/\` directory with the challenge ID in the filename.
+2. Submissions: When you complete a challenge, save your solution in the \`submissions/\` directory with the challenge ID in the filename.
 
-3. **Feedback:** After you submit, I'll review your work and provide feedback based on my teaching style (${mentorProfile.style}, ${mentorProfile.tone}) and your progress.
+3. Feedback: After you submit, I'll review your work and provide feedback based on my teaching style (${mentorProfile.style}, ${mentorProfile.tone}) and your progress.
 
-4. **Questions:** If you have questions, place a markdown file in the \`letters/to-mentor/\` directory. I'll respond promptly.
+4. Questions: If you have questions, place a markdown file in the \`letters/to-mentor/\` directory. I'll respond promptly.
 
 ## About Me
 
@@ -313,7 +313,7 @@ My expertise areas include: ${mentorProfile.expertise.join(', ')}.
 
 ## Next Steps
 
-**Please send me a letter:** Place a markdown file in \`letters/to-mentor/\` telling me about:
+Please send me a letter: Place a markdown file in \`letters/to-mentor/\` telling me about:
 - Your current skills
 - What you want to learn
 - How you prefer to learn
