@@ -15,7 +15,7 @@ if (!apiKey) {
   throw new Error('GEMINI_API_KEY environment variable is not set')
 }
 const genAI = new GoogleGenerativeAI(apiKey)
-const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-04-17' })
+const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
 export async function generateChallengePrompt(
   config: Config,
