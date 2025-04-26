@@ -23,7 +23,7 @@ This application uses the following challenge types:
 
 ---
 `;
-const MEMORY_FILE_PATH = path.join(process.cwd(), 'ai-memory.md');
+const MEMORY_FILE_PATH = path.join(process.cwd(), 'data', 'ai-memory.md');
 
 // Initialize Gemini AI (only for summarization in this file)
 // Consider refactoring to have a single AI client instance shared across utils
@@ -52,6 +52,8 @@ interface AIMemory {
  */
 export async function readAIMemoryRaw(): Promise<string> {
     try {
+        // Ensure the directory exists before trying to read/write
+        await fs.mkdir(path.dirname(MEMORY_FILE_PATH), { recursive: true });
         return await fs.readFile(MEMORY_FILE_PATH, 'utf-8');
     } catch (error: any) {
         if (error.code === 'ENOENT') {
