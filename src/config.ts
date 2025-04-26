@@ -49,7 +49,7 @@ export const config: Config = {
   difficulty: 6,
   sessionLength: 60,
   preferredChallengeTypes: ['coding', 'question', 'iac', 'mcq', 'design', 'casestudy'] as ChallengeType[],
-  introductionSubmitted: true,
+  introductionSubmitted: false,
 
   // Style preferences
   mentorProfile: 'linus',
