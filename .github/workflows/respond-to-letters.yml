@@ -1,0 +1,87 @@
+name: Respond to Letters
+
+on:
+  push:
+    paths:
+      - "letters/to-mentor/**"
+    # Optionally add a schedule if needed, or keep it push-based
+    # schedule:
+    #   - cron: "*/15 * * * *" # Check every 15 minutes (consider cost/efficiency)
+
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  respond-to-letter:
+    runs-on: ubuntu-latest
+    # Limit concurrency to prevent multiple runs processing the same letters
+    concurrency: 
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch enough history to compare changes if needed, adjust as necessary
+          fetch-depth: 2 
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20" # Match the version used in other workflows
+
+      - name: Install dependencies
+        run: npm install # Assuming package.json and lock file are in the root
+
+      - name: Identify new letters
+        id: find_letters
+        # This step needs a script or command to reliably find *new* files since the last run.
+        # A simple `ls` might process already processed files if a run fails mid-way.
+        # Using git diff might be more robust if the workflow always commits processed files.
+        # For now, placeholder command. Replace with a call to a Node script.
+        run: |
+          # PSEUDOCODE / PLACEHOLDER - Replace with robust script call
+          # This needs a script like `node src/scripts/find-new-letters.js` 
+          # that outputs the list of new files, perhaps one per line.
+          echo "Identifying new letters in letters/to-mentor/..."
+          ls -t letters/to-mentor/* > new_letters.txt || echo "No new letters found."
+          echo "files=$(cat new_letters.txt | tr '\n' ' ')" >> $GITHUB_OUTPUT
+
+      - name: Process letters if any found
+        if: steps.find_letters.outputs.files != ''
+        run: |
+          # PSEUDOCODE / PLACEHOLDER - Replace with robust script call
+          # This needs a Node script like `node src/scripts/process-letters.js ${{ steps.find_letters.outputs.files }}`
+          # The script would:
+          # 1. Read letter content
+          # 2. Get context (student profile, recent correspondence - TBD)
+          # 3. Get mentor profile
+          # 4. Call AI utility (src/utils/ai.ts)
+          # 5. Parse response
+          # 6. Save response to letters/from-mentor/
+          # 7. Update student-profile.json (via profile-manager.ts)
+          # 8. Send email (via email.ts)
+          # 9. Move processed letter to letters/archive/ (or dedicated archive folder)
+          echo "Processing letters: ${{ steps.find_letters.outputs.files }}"
+          # Example: node dist/scripts/process-letters.js ${{ steps.find_letters.outputs.files }}
+          echo "Simulating letter processing..."
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          # Add any other necessary env vars for the script
+
+      - name: Commit changes if any were processed
+        if: steps.find_letters.outputs.files != ''
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          # Add specific files modified by the processing script
+          git add letters/from-mentor/ letters/archive/ student-profile.json 
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Respond to user letters and archive processed files"
+            git push
+          fi
+        # Consider adding error handling if commit/push fails 
