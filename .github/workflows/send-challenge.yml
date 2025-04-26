@@ -37,6 +37,9 @@ jobs:
 
       - name: Check schedule configuration
         id: check-schedule
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
           # Get current schedule from config
           SCHEDULE=$(node -e "
