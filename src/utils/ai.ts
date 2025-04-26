@@ -181,10 +181,11 @@ export async function generateChallenge(
   // Correct structure for GenerateContentRequest with schema
   const request = {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      // generationConfig: {}, // Keep empty or add other configs like temperature if needed
-      // Schema and MimeType are siblings to contents, not inside generationConfig
-      responseMimeType: 'application/json',
-      responseSchema: ChallengeSchema,
+      generationConfig: { // Parameters for generation
+          responseSchema: ChallengeSchema, // Specify the schema here
+          // responseMimeType: 'application/json' // Mime type should be inferred from schema
+          // Add other generation configs like temperature, topK etc. if needed
+      }
   };
 
   // Type assertion if needed, or ensure request matches GenerateContentRequest type
