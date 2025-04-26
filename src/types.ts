@@ -18,7 +18,7 @@ export interface Challenge {
   id: string
   title: string
   description: string
-  type: ChallengeType
+  type: string
   requirements?: string[]
   examples?: string[]
   hints?: string[]
@@ -202,7 +202,7 @@ export interface LetterInsights {
   strengths?: string[]; // Optional as insights might not always be present
   weaknesses?: string[]; // Optional
   topics?: string[]; // Optional
-  sentiment?: 'positive' | 'negative' | 'neutral'; // Optional analysis
+  sentiment?: string; // Optional analysis - Changed from enum
   skillLevelAdjustment?: number; // e.g., +0.1 or -0.2 based on letter content
   flags?: string[]; // e.g., 'confused', 'motivated', 'needs_clarification'
 } 

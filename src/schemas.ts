@@ -19,7 +19,7 @@ export const ChallengeSchema = z.object({
     id: z.string().regex(/^CC-\d{3,}$/, { message: "Invalid Challenge ID format (e.g., CC-001)" }),
     title: z.string().min(1, { message: "Title is required" }),
     description: z.string().min(1, { message: "Description is required" }),
-    type: ChallengeTypeSchema,
+    type: z.string(),
     requirements: z.array(z.string()).optional().default([]), // Optional array, defaults to empty
     examples: z.array(z.string()).optional().default([]),
     hints: z.array(z.string()).optional().default([]),
@@ -84,7 +84,7 @@ export const LetterInsightsSchema = z.object({
     sentiment: z.string().optional(),
     skillLevelAdjustment: z.number().optional(),
     flags: z.array(z.string()).optional()
-}).strict(); // Use strict to prevent unexpected fields in insights
+});
 
 // Schema for LetterResponse
 export const LetterResponseSchema = z.object({
@@ -92,7 +92,7 @@ export const LetterResponseSchema = z.object({
     // Ensure insights matches the schema, but allow it to be missing or empty {} 
     // Use .default({}) to handle cases where AI might omit the insights key entirely
     insights: LetterInsightsSchema.optional().default({})
-}).strict(); // Use strict to prevent unexpected top-level fields
+});
 
 // --- Stats Schemas ---
 
