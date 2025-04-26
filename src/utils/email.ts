@@ -210,7 +210,6 @@ export async function formatFeedbackEmail(
   let markdown = getGreeting(emailStyle);
   markdown += `\n\n# Feedback for: ${challenge.title}`;
 
-  markdown += createEmailSection('Score', `${feedback.score}/100`, 2);
   markdown += createEmailSection('Strengths', createBulletedList(feedback.strengths), 2);
   markdown += createEmailSection('Areas for Improvement', createBulletedList(feedback.weaknesses), 2);
   markdown += createEmailSection('Suggestions', createBulletedList(feedback.suggestions), 2);
