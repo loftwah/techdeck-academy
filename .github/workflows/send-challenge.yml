@@ -1,5 +1,9 @@
 name: Send Challenge
 
+# Grant write permissions for contents
+permissions:
+  contents: write
+
 on:
   schedule:
     # Daily at 9AM UTC
