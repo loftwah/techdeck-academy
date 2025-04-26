@@ -50,6 +50,12 @@ This document outlines the typical workflow for a user starting with TechDeck Ac
     *   **Result:** This updates `student-profile.json`, changing the `status` field to `'active'`.
 *   **Commit & Push:** The workflow commits the AI response, the updated `student-profile.json`, and archives the original letter.
 
+When I sent the intro back it responded but didn't seem to change anything else? I'm not sure we fixed that. We should probably also update the config file so it knows not to do the intro twice? Are we actually generating and saving the student profile?
+
+Does this record any of the details from the letter in a way that will affect things? It should?
+
+When I got a response back from my intro it had a bunch of stuff in there for me to do. I didn't actually mind this and it was cool because it was like they were giving me stuff to do that wasn't an official challenge. Do we need a separate function for the intro? So we don't have stuff clash? Separation of concerns?
+
 ## 5. Subsequent Challenge Generation (`send-challenge.yml`)
 
 *   **Trigger:** Runs on schedule or manually.
@@ -65,6 +71,8 @@ This document outlines the typical workflow for a user starting with TechDeck Ac
 1.  **Solve:** Solve the challenge presented in the `.json` file located in the `challenges/` directory.
 2.  **Create Submission File:** Create a corresponding submission file in the `submissions/` directory. The format will depend on the challenge type (e.g., code file, markdown with answers). **Note:** The exact submission format expected needs clarification or standardization based on challenge type.
 3.  **Commit & Push:** Commit your submission file(s) and push.
+
+There should only ever be able to have one challenge going at a time. If I'm busy or lazy it shouldn't build up or punish me.
 
 ## 7. Processing a Challenge Submission (`process-submissions.yml`)
 
