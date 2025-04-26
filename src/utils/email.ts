@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url'; // Import necessary function for ESM __dirname
 import * as handlebars from 'handlebars'; // Import Handlebars
 import { Resend } from 'resend'
 import { environment } from '../config.js'
@@ -13,6 +14,10 @@ import type {
 } from '../types.js'
 
 const resend = new Resend(environment.RESEND_API_KEY)
+
+// Correctly define __dirname for ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Helper function to escape HTML (potentially still useful for specific data within templates)
 function escapeHtml(text: string): string {
