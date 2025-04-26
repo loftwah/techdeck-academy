@@ -1,0 +1,26 @@
+{{!-- Email template for responding to a student's letter --}}
+{{greeting}}
+
+<p>I received your letter regarding:</p>
+<blockquote>
+  {{#if shortQuestion}}
+    {{shortQuestion}}...
+  {{else}}
+    Your recent message
+  {{/if}}
+</blockquote> 
+
+<p>Here are my thoughts:</p>
+
+<hr style="border: none; border-top: 1px dashed #CBD5E0; margin: 16px 0;">
+
+{{{responseContentHtml}}} {{!-- Use triple braces to allow pre-rendered HTML from AI --}}
+
+<hr style="border: none; border-top: 1px dashed #CBD5E0; margin: 16px 0;">
+
+<p>Best regards,</p>
+
+<p>
+  {{mentorName}}<br>
+  (Your AI Mentor)
+</p> 

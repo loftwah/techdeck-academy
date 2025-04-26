@@ -169,13 +169,42 @@ export async function formatWelcomeEmail(
   config: Config,
   mentorProfile: MentorProfile
 ): Promise<{ subject: string; html: string }> {
-  // TODO: Refactor using Handlebars template 'welcome.hbs'
-  const markdown = `Welcome, ${config.githubUsername}!`; // Placeholder
-  const markdownToHtml = async (md: string): Promise<string> => `<p>${escapeHtml(md)}</p>`; // Placeholder
-  return {
-    subject: 'Welcome to TechDeck Academy!',
-    html: baseTemplateWrapper(await markdownToHtml(markdown))
-  };
+  try {
+    const template = await loadAndCompileTemplate('welcome');
+
+    // Determine schedule description
+    let scheduleDescription = 'on a schedule you define';
+    if (config.schedule.challengeFrequency === 'daily') {
+      scheduleDescription = 'on a daily basis';
+    } else if (config.schedule.challengeFrequency === 'threePerWeek') {
+      scheduleDescription = 'on Mondays, Wednesdays, and Fridays';
+    } else if (config.schedule.challengeFrequency === 'weekly') {
+      scheduleDescription = 'every Monday';
+    } else if (config.schedule.challengeFrequency === 'manual') {
+      scheduleDescription = 'manually when you trigger the action';
+    }
+
+    // Prepare data for the template
+    const templateData = {
+      greeting: getGreeting(config.emailStyle),
+      learningTopics: Object.keys(config.topics).join(', '),
+      scheduleDescription: scheduleDescription,
+      mentor: mentorProfile,
+      mentorExpertise: mentorProfile.expertise.join(', ')
+    };
+
+    const renderedContent = template(templateData);
+    const finalHtml = baseTemplateWrapper(renderedContent);
+    validateEmailContent({ subject: 'Welcome to TechDeck Academy!', html: finalHtml });
+
+    return {
+      subject: 'Welcome to TechDeck Academy!',
+      html: finalHtml
+    };
+  } catch (error) {
+    console.error('Error formatting welcome email:', error);
+    throw new Error(`Failed to format welcome email: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 export async function formatLetterResponseEmail(
@@ -184,13 +213,34 @@ export async function formatLetterResponseEmail(
   emailStyle: EmailStyle,
   mentorName: string
 ): Promise<{ subject: string; html: string }> {
-  // TODO: Refactor using Handlebars template 'letter-response.hbs'
-  const markdown = `Re: Your Letter\n\n${response.content}`; // Placeholder
-  const markdownToHtml = async (md: string): Promise<string> => `<p>${escapeHtml(md)}</p>`; // Placeholder
-  return {
-    subject: `Response from ${mentorName}`,
-    html: baseTemplateWrapper(await markdownToHtml(markdown))
-  };
+  try {
+    const template = await loadAndCompileTemplate('letter-response');
+
+    // Prepare data for the template
+    const templateData = {
+      greeting: getGreeting(emailStyle),
+      // Extract first line or fixed length for summary
+      shortQuestion: originalQuestion.split('\n')[0].substring(0, 75),
+      // IMPORTANT: Assuming response.content might contain safe HTML/Markdown
+      // If it needs sanitization, do it here before passing to template
+      responseContentHtml: response.content, 
+      mentorName: mentorName
+    };
+
+    const renderedContent = template(templateData);
+    const finalHtml = baseTemplateWrapper(renderedContent);
+    // Use a slightly more dynamic subject
+    const subject = `Re: ${templateData.shortQuestion}`;
+    validateEmailContent({ subject: subject, html: finalHtml });
+
+    return {
+      subject: subject,
+      html: finalHtml
+    };
+  } catch (error) {
+    console.error('Error formatting letter response email:', error);
+    throw new Error(`Failed to format letter response email: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function validateEmailContent(content: { subject: string; html: string }): void {

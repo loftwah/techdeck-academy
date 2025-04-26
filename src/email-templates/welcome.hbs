@@ -1,0 +1,30 @@
+{{!-- Email template for welcoming a new user --}}
+{{greeting}}
+
+<h1>Welcome to TechDeck Academy!</h1>
+
+<p>I'll be your {{mentor.name}} mentor for your journey in learning {{learningTopics}}.</p>
+
+<h2>How This Works</h2>
+<ol>
+  <li><strong>Challenges:</strong> Based on your configuration, you'll receive challenges {{scheduleDescription}}.</li>
+  <li><strong>Submissions:</strong> When you complete a challenge, save your solution in the <code>submissions/</code> directory with the challenge ID in the filename.</li>
+  <li><strong>Feedback:</strong> After you submit, I'll review your work and provide feedback based on my teaching style ({{mentor.style}}, {{mentor.tone}}) and your progress.</li>
+  <li><strong>Questions:</strong> If you have questions, place a markdown file in the <code>letters/to-mentor/</code> directory. I'll respond promptly.</li>
+</ol>
+
+<h2>About Me</h2>
+<p>{{mentor.description}}</p>
+<p>My expertise areas include: {{mentorExpertise}}.</p>
+
+<h2>Next Steps</h2>
+<p>Please send me a letter: Place a markdown file in <code>letters/to-mentor/</code> telling me about:</p>
+<ul>
+  <li>Your current skills</li>
+  <li>What you want to learn</li>
+  <li>How you prefer to learn</li>
+  <li>Any specific areas you want to focus on</li>
+</ul>
+<p>I'll use this to tailor your learning experience.</p>
+
+<p>Looking forward to working with you!</p> 
