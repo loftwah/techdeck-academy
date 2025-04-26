@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, FunctionDeclarationSchema, FunctionCallingMode } from '@google/generative-ai'
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, FunctionDeclarationSchema, FunctionCallingMode, GenerateContentResult } from '@google/generative-ai'
 import { environment } from '../config.js'
 import * as files from './files.js'; // Import file utilities
 import { readAIMemoryRaw, updateAIMemory } from './ai-memory-manager.js'; // Import memory reader
@@ -15,6 +15,7 @@ import type {
 } from '../types.js'
 // Import Zod schemas
 import { ChallengeSchema as ZodChallengeSchema, FeedbackSchema as ZodFeedbackSchema } from '../schemas.js';
+import { ZodError } from 'zod'; // Ensure ZodError is imported
 
 // Initialize Gemini AI
 const apiKey = environment.GEMINI_API_KEY
@@ -25,12 +26,60 @@ const genAI = new GoogleGenerativeAI(apiKey)
 
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }); // Updated model name
 
-// Helper type for prompt sections
+// --- Retry Logic Utility --- 
+
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 1000;
+
+/**
+ * Calls the Google Generative AI model with retry logic and exponential backoff.
+ * @param operationName A descriptive name for the AI operation (for logging).
+ * @param prompt The prompt string to send to the model.
+ * @// TODO: Add optional parameters for generationConfig and safetySettings if needed later
+ * @returns The result from the generative AI model.
+ * @throws An error if the API call fails after all retry attempts.
+ */
+async function callGenerativeAIWithRetry(
+    operationName: string,
+    prompt: string
+    // generationConfig?: GenerationConfig, // Example for future expansion
+    // safetySettings?: SafetySetting[]      // Example for future expansion
+): Promise<GenerateContentResult> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            console.log(`Attempt ${attempt}/${MAX_RETRIES} for AI operation: ${operationName}`);
+            // TODO: Pass generationConfig and safetySettings if they are added as params
+            const result = await model.generateContent(prompt);
+            console.log(`AI operation ${operationName} successful on attempt ${attempt}.`);
+            return result; // Success, return result
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            console.warn(`AI call attempt ${attempt} failed for ${operationName}: ${lastError.message}`);
+            if (attempt < MAX_RETRIES) {
+                const delay = INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
+                // Add random jitter to delay (e.g., +/- 10%)
+                const jitter = delay * 0.1 * (Math.random() * 2 - 1);
+                const effectiveDelay = Math.max(0, Math.round(delay + jitter));
+                console.log(`Retrying ${operationName} in approximately ${effectiveDelay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, effectiveDelay));
+            } else {
+                 console.error(`AI operation ${operationName} failed after ${MAX_RETRIES} attempts.`);
+            }
+        }
+    }
+
+    // If loop completes without returning, all retries failed.
+    throw new Error(`AI operation '${operationName}' failed after ${MAX_RETRIES} attempts: ${lastError?.message || 'Unknown error'}`);
+}
+
+// --- Prompt Building and Parsing Helpers --- 
+
 type PromptSection = { title: string; content: string; markdownFormat?: 'codeblock' | 'blockquote' | 'notes' };
 
-// Simple Prompt Building Helper Function
 function buildPrompt(
-    persona: { name: string; style: string; tone: string } | null, // Allow null if no specific persona
+    persona: { name: string; style: string; tone: string } | null, 
     taskDescription: string,
     contextSections: PromptSection[],
     instructions: string[],
@@ -73,6 +122,30 @@ function buildPrompt(
 
     return prompt;
 }
+
+// Common Markdown Parsing Functions
+
+const extractH1Content = (markdown: string): string | null => {
+    const match = markdown.match(/^#\s+(.*)/m);
+    return match ? match[1].trim() : null;
+};
+
+const extractH2Content = (markdown: string, heading: string): string | null => {
+    const regex = new RegExp(`^##\s+${heading}\s*\n([\s\S]*?)(?=\n##|\n*$)`, 'im');
+    const match = markdown.match(regex);
+    return match ? match[1].trim() : null;
+};
+
+const parseList = (content: string | null): string[] => {
+    if (!content) return [];
+    // Handles unordered lists (*, -, +) and removes leading markers
+    return content.split('\n').map(line => line.trim().replace(/^[-*+]\s+/, '')).filter(Boolean);
+};
+  
+const parseCommaSeparated = (content: string | null): string[] => {
+    if (!content) return [];
+    return content.split(',').map(item => item.trim()).filter(Boolean);
+};
 
 // Define the formal schema for the Challenge object
 // Keeping the schema definition for potential future use, but won't enforce function call for now
@@ -198,7 +271,11 @@ export async function generateFeedbackPrompt(
   mentorProfile: MentorProfile
 ): Promise<string> {
   const contextSections: PromptSection[] = [
-      { title: 'Challenge Details', content: `Title: ${challenge.title}\nRequirements:\n${challenge.requirements.join('\n')}` },
+      {
+        title: 'Challenge Details',
+        // Handle potentially undefined requirements
+        content: `Title: ${challenge.title}\nRequirements:\n${challenge.requirements?.join('\n') ?? 'N/A'}`
+      },
       { title: 'AI Teacher Notes', content: aiMemory, markdownFormat: 'notes' },
       { title: 'Student Submission', content: submission.content, markdownFormat: 'codeblock' }
   ];
@@ -238,8 +315,6 @@ DO NOT include headings or fields for 'submissionId' or 'createdAt'. These are h
 }
 
 // Fixed version of the generateChallenge function
-// TEMPORARILY REVERTED Function Calling parsing due to TS type issues
-// TODO: Revisit Function Calling implementation for robust JSON parsing
 export async function generateChallenge(
   config: Config,
   aiMemory: string, 
@@ -247,182 +322,75 @@ export async function generateChallenge(
 ): Promise<Challenge> {
   const prompt = await generateChallengePrompt(config, aiMemory, recentChallenges);
   
-  console.log('Generating challenge (expecting Markdown response)...'); // Updated log
-  
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY_MS = 1000; // 1 second
-  let result;
-  let lastError: Error | null = null;
+  console.log('Generating challenge (expecting Markdown response)...');
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-        // Removed tools and toolConfig temporarily
-        result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: 0.7,
-            }
-            // tools: [...], // Removed
-            // toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.ANY } } // Removed
-        });
-        lastError = null; // Success, clear last error
-        break; // Exit loop on success
-    } catch (error) { 
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`Error calling AI model for challenge generation (Attempt ${attempt}/${MAX_RETRIES}):`, lastError);
-        if (attempt < MAX_RETRIES) {
-            console.log(`Retrying in ${RETRY_DELAY_MS / 1000}s...`);
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-        } else {
-            console.error("Max retries reached for challenge generation.");
-        }
-    }
+  // Use the retry utility function
+  const result = await callGenerativeAIWithRetry('generateChallenge', prompt);
+
+  const responseText = result.response.text();
+  console.log('Raw AI Response (Challenge):\n', responseText);
+
+  // --- Markdown Parsing --- 
+  // Remove duplicate definitions of parsing helpers
+  // const extractH1Content = ... (removed)
+  // const extractH2Content = ... (removed)
+  // const parseList = ... (removed)
+  // const parseCommaSeparated = ... (removed)
+
+  // Extract data from Markdown using common helpers
+  const title = extractH1Content(responseText);
+  const description = extractH2Content(responseText, 'Description');
+  const topicsRaw = extractH2Content(responseText, 'Topics');
+  const requirementsRaw = extractH2Content(responseText, 'Requirements');
+  const examplesRaw = extractH2Content(responseText, 'Examples');
+  const hintsRaw = extractH2Content(responseText, 'Hints');
+  const optionsRaw = extractH2Content(responseText, 'Options'); // For MCQ
+
+  // Basic validation: Title and Description are essential
+  if (!title || !description || !topicsRaw) {
+    console.error('Failed to parse essential fields (Title, Description, Topics) from AI response:', responseText);
+    throw new Error('Failed to parse essential challenge fields from AI response.');
   }
 
-  // If all retries failed, lastError will be set
-  if (lastError || !result) {
-      throw new Error(`AI API call failed after ${MAX_RETRIES} attempts during challenge generation: ${lastError?.message}`);
-  }
-
-  const response = result.response;
-   if (!response) {
-       throw new Error("AI API call returned no response during challenge generation.");
-   }
-   const text = response.text();
-    if (typeof text !== 'string') {
-        throw new Error("AI API call returned non-text response during challenge generation.");
-    }
-  console.log('Raw AI response:\n', text); // Keep raw response log
-
-  // --- START REVISED MARKDOWN PARSING LOGIC ---
-
-  const parsedData: Partial<Challenge> = {};
-
-  // Helper function to extract content under a specific H2 heading
-  const extractH2Content = (heading: string): string | null => {
-    // Match H2 heading exactly, allowing for optional trailing whitespace
-    // Capture content until the next H2/H1 heading or end of string
-    // Dotall (s) flag allows '.' to match newlines
-    const regex = new RegExp(`^## ${heading}\s*\n([\s\S]*?)(?=\n(?:## |# )|$)`, "im"); // Look for next ## or #
-    const match = text.match(regex);
-    return match && match[1] ? match[1].trim() : null;
+  // Construct the Challenge object
+  const challengeData: Partial<Challenge> = {
+    id: `CC-${Date.now()}`, // Simple ID generation
+    title: title,
+    description: description,
+    topics: parseCommaSeparated(topicsRaw),
+    requirements: parseList(requirementsRaw),
+    // Combine Examples and Options parsing, preferring Options if present (for MCQ)
+    examples: parseList(optionsRaw || examplesRaw),
+    hints: parseList(hintsRaw),
+    difficulty: config.difficulty, // Use requested difficulty
+    createdAt: new Date().toISOString(),
+    type: 'coding' // Placeholder - TODO: Determine type based on prompt/response?
   };
-
-  // Helper function to parse bulleted lists (accepts * or -)
-  const parseList = (content: string | null): string[] => {
-      if (!content) return [];
-      // Match lines starting with * or - (allowing leading whitespace)
-      // Capture the text after the bullet and trim it
-      return content.split('\n')
-          .map(line => line.match(/^\s*[-*]\s*(.*)/))
-          .filter(match => !!match) // Ensure match is not null
-          .map(match => match![1].trim());
-  };
-
-  // --- Extract Title (H1) --- 
-  let titleMatch = text.match(/^#\s+(.*?)(\n|$)/im); // Find first H1
-  parsedData.title = titleMatch && titleMatch[1] ? titleMatch[1].trim() : undefined;
-
-  // --- Extract Description (H2) --- 
-  parsedData.description = extractH2Content('Description') ?? undefined;
-  // Fallback: If Description H2 not found, try finding the first H2 after the title
-  if (!parsedData.description && parsedData.title) {
-      const titleEndIndex = text.indexOf(parsedData.title) + parsedData.title.length;
-      const textAfterTitle = text.substring(titleEndIndex);
-      // Find the first H2 in the remaining text
-      const firstH2Match = textAfterTitle.match(/^##\s+.*?\n([\s\S]*?)(?=\n(?:## |# )|$)/im);
-      if (firstH2Match && firstH2Match[1]) {
-          // Basic heuristic: If an H2 exists soon after H1, assume it's the description
-          // We might need more robust logic if the structure varies wildly
-          console.warn("Could not find '## Description'. Using content of the first H2 found after the title as description.");
-          parsedData.description = firstH2Match[1].trim(); 
-      }
-  }
-  // Fallback 2: If still no description, maybe grab text between H1 and next H2/H1?
-  if (!parsedData.description && titleMatch) {
-      const titleStartIndex = titleMatch.index ?? 0;
-      const titleEndIndex = titleStartIndex + titleMatch[0].length;
-      const nextHeadingMatch = text.substring(titleEndIndex).match(/\n(?:## |# )/);
-      const endOfDescription = nextHeadingMatch ? titleEndIndex + (nextHeadingMatch.index ?? 0) : text.length;
-      const potentialDescription = text.substring(titleEndIndex, endOfDescription).trim();
-      if (potentialDescription) {
-          console.warn("Could not find '## Description' or subsequent H2. Using text between H1 and next heading as description.");
-          parsedData.description = potentialDescription;
-      }
-  }
-
-  // --- Extract Topics (H2) --- 
-  const topicsStr = extractH2Content('Topics');
-  parsedData.topics = topicsStr ? topicsStr.split(',').map(t => t.trim()).filter(t => t) : [];
-
-  // --- Extract Optional Sections (H2) --- 
-  parsedData.requirements = parseList(extractH2Content('Requirements'));
-  // Allow 'Options' as an alternative heading for MCQ examples
-  const examplesContent = extractH2Content('Examples') ?? extractH2Content('Options');
-  parsedData.examples = parseList(examplesContent);
-  parsedData.hints = parseList(extractH2Content('Hints'));
   
-  // Check if essential fields were extracted (after fallbacks)
-  if (!parsedData.title || !parsedData.description) { 
-      console.error("Failed to parse essential Title (H1) or Description (H2/Fallback) from AI Markdown response:", parsedData);
-      console.error("Raw AI response was:\n", text); // Log raw text on error
-      throw new Error(`Failed to parse essential fields (Title, Description) from AI's Markdown response. Check the raw AI response log.`);
-  }
+  // Determine type based on prompt or content - IMPROVED HEURISTIC
+  const selectedTypeMatch = prompt.match(/Generate a (\w+) challenge/i);
+  const inferredType = selectedTypeMatch ? selectedTypeMatch[1].toLowerCase() as ChallengeType : 'coding';
+  challengeData.type = inferredType;
+  console.log(`Inferred challenge type: ${inferredType}`);
 
-  // --- END REVISED MARKDOWN PARSING LOGIC ---
-
-  // Now we have parsedData (from Markdown), proceed to augment and validate
-  
-  // Create a mutable object to hold challenge data
-  let challengeData: Partial<Challenge> = parsedData; 
-
-  // Ensure the challenge has a valid ID (assign if missing) BEFORE validation
-  if (!challengeData.id || typeof challengeData.id !== 'string' || !challengeData.id.match(/^CC-\d{3,}$/)) {
-    const existingChallenges = await files.listChallenges();
-    const existingIds = existingChallenges
-      .map(id => id.match(/^CC-(\d+)/))
-      .filter(match => match !== null)
-      .map(match => parseInt(match![1], 10));
-    
-    const maxId = Math.max(0, ...existingIds);
-    const newId = `CC-${String(maxId + 1).padStart(3, '0')}`;
-    
-    console.warn(`Generated challenge had invalid or missing ID (${challengeData.id}). Assigning new ID: ${newId}`);
-    challengeData.id = newId;
-  }
-  
-  // Ensure createdAt is set BEFORE validation
-  challengeData.createdAt = challengeData.createdAt || new Date().toISOString();
-  
-  // --- ASSIGN LOCALLY CONTROLLED FIELDS --- 
-  // Determine selected type again (or pass it from prompt function if preferred)
-  const allTopics: string[] = Object.keys(config.topics);
-  const availableTypes = config.preferredChallengeTypes && config.preferredChallengeTypes.length > 0 
-                         ? config.preferredChallengeTypes 
-                         : ['coding'];
-  const selectedType = availableTypes[Math.floor(Math.random() * availableTypes.length)] as ChallengeType;
-  challengeData.type = selectedType;
-  
-  // Assign difficulty from config
-  challengeData.difficulty = config.difficulty;
-  // --- END ASSIGN LOCALLY CONTROLLED FIELDS ---
-
-  // NOW, validate the augmented object against the Zod schema
-  let challenge: Challenge;
+  // Validate the constructed object using Zod schema
   try {
-      // Now that Zod schema includes 'type', direct parsing should work
-      challenge = ZodChallengeSchema.parse(challengeData); 
-  } catch (zodError) {
-      console.error("Zod validation failed after augmenting ID and createdAt:", zodError);
-       // Include Zod error details if available
-      const errorDetails = zodError instanceof Error ? zodError.message : String(zodError);
-      throw new Error(`Challenge data failed validation after processing: ${errorDetails}`);
+    const validatedChallenge = ZodChallengeSchema.parse(challengeData);
+    console.log(`Generated and validated challenge: ${validatedChallenge.id}`);
+    return validatedChallenge;
+  } catch (error) {
+    // Add check for ZodError here
+    if (error instanceof ZodError) {
+      console.error('Generated challenge data failed validation:', error.errors);
+      console.error('Data that failed validation:', challengeData);
+    } else if (error instanceof Error) { // Handle other errors
+      console.error('An unexpected error occurred during challenge validation:', error.message);
+    } else {
+      console.error('An unexpected non-error thrown during challenge validation:', error);
+    }
+    // Throw a specific error regardless of the caught type
+    throw new Error('Generated challenge data failed validation. See logs for details.');
   }
-
-  // Post-validation checks removed as Zod handles them
-  // (e.g., title/description presence, array types are handled by the schema)
-
-  return challenge;
 }
 
 // Refactored: Uses aiMemory string instead of StudentProfile object
@@ -433,93 +401,57 @@ export async function generateFeedback(
   mentorProfileName: string 
 ): Promise<Feedback> {
   const mentorProfile = await profile.loadMentorProfile(mentorProfileName);
-  const prompt = await generateFeedbackPrompt(challenge, submission, aiMemory, mentorProfile); // Pass aiMemory
-  
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY_MS = 1000;
-  let result;
-  let lastError: Error | null = null;
+  const prompt = await generateFeedbackPrompt(challenge, submission, aiMemory, mentorProfile);
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-          result = await model.generateContent(prompt);
-          lastError = null;
-          break; // Exit loop on success
-      } catch (error) {
-          lastError = error instanceof Error ? error : new Error(String(error));
-          console.error(`Error calling AI model for feedback generation (Attempt ${attempt}/${MAX_RETRIES}):`, lastError);
-          if (attempt < MAX_RETRIES) {
-              console.log(`Retrying in ${RETRY_DELAY_MS / 1000}s...`);
-              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-          } else {
-              console.error("Max retries reached for feedback generation.");
-          }
-      }
-  }
-  
-  // If all retries failed, lastError will be set
-   if (lastError || !result) {
-       throw new Error(`AI API call failed after ${MAX_RETRIES} attempts during feedback generation: ${lastError?.message}`);
-   }
-  
-  const response = result.response;
-   if (!response) {
-       throw new Error("AI API call returned no response during feedback generation.");
-   }
-   const textResponse = response.text(); 
-    if (typeof textResponse !== 'string') {
-        throw new Error("AI API call returned non-text response during feedback generation.");
+  console.log('Generating feedback (expecting Markdown response)...');
+
+  // Use the retry utility function
+  const result = await callGenerativeAIWithRetry('generateFeedback', prompt);
+
+  const responseText = result.response.text();
+  console.log('Raw AI Response (Feedback):\n', responseText);
+
+  // --- Markdown Parsing --- 
+  // Remove duplicate definitions of parsing helpers
+  // const extractContent = ... (removed - now use extractH2Content)
+  // const parseList = ... (removed)
+
+  // Extract data from Markdown using common helpers
+  const strengthsRaw = extractH2Content(responseText, 'Strengths');
+  const weaknessesRaw = extractH2Content(responseText, 'Weaknesses');
+  const suggestionsRaw = extractH2Content(responseText, 'Suggestions');
+  const improvementPathRaw = extractH2Content(responseText, 'Improvement Path');
+
+  // Construct the Feedback object
+  const feedbackData: Partial<Feedback> = {
+    // submissionId is derived from the input submission object or context
+    // We need the original submissionId (challengeId-timestamp) 
+    // This function currently lacks access to it. 
+    // TODO: Pass submissionId to generateFeedback or retrieve it differently.
+    submissionId: `${submission.challengeId}-placeholder`, // TEMPORARY PLACEHOLDER
+    strengths: parseList(strengthsRaw),
+    weaknesses: parseList(weaknessesRaw),
+    suggestions: parseList(suggestionsRaw),
+    improvementPath: improvementPathRaw ?? "Review suggestions and try applying them.", // Use default if missing
+    createdAt: new Date().toISOString(),
+  };
+
+  // Validate the constructed object using Zod schema
+  try {
+    const validatedFeedback = ZodFeedbackSchema.parse(feedbackData);
+    console.log(`Generated and validated feedback for submission: ${validatedFeedback.submissionId}`);
+    return validatedFeedback;
+  } catch (error) {
+    if (error instanceof ZodError) {
+      console.error('Generated feedback data failed validation:', error.errors);
+      console.error('Data that failed validation:', feedbackData);
+    } else if (error instanceof Error) {
+      console.error('An unexpected error occurred during feedback validation:', error.message);
+    } else {
+      console.error('An unexpected non-error thrown during feedback validation:', error);
     }
-    
-  let text = textResponse; 
-  
-  // --- START NEW MARKDOWN PARSING LOGIC for Feedback ---
-  console.log('Parsing feedback Markdown response...');
-  console.log('Raw AI feedback response:\n', text);
-
-  // Re-use helper functions from generateChallenge (assuming they are accessible or redefined here)
-  // If not accessible, redefine extractContent and parseList here.
-  // For brevity, assuming they are accessible/redefined:
-  const extractContent = (heading: string): string | null => {
-    const regex = new RegExp(`^## ${heading}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, "im");
-    const match = text.match(regex);
-    return match && match[1] ? match[1].trim() : null;
-  };
-  const parseList = (content: string | null): string[] => {
-    if (!content) return [];
-    return content.split('\\n')
-      .map(line => line.match(/^\\s*[-*]\\s*(.*)/))
-      .filter(match => match !== null)
-      .map(match => match![1].trim());
-  };
-
-  const parsedFeedback: Partial<Feedback> = {};
-
-  parsedFeedback.strengths = parseList(extractContent('Strengths'));
-  parsedFeedback.weaknesses = parseList(extractContent('Weaknesses'));
-  parsedFeedback.suggestions = parseList(extractContent('Suggestions'));
-  parsedFeedback.improvementPath = extractContent('Improvement Path') ?? 'No specific path provided.';
-
-  // Basic check for essential feedback content (optional, adjust as needed)
-  if (parsedFeedback.strengths.length === 0 && parsedFeedback.weaknesses.length === 0 && parsedFeedback.suggestions.length === 0) {
-      console.warn('AI feedback response seemed empty or failed to parse headings (Strengths, Weaknesses, Suggestions). Check raw response.');
-      // Decide if we should throw or allow empty feedback
+    throw new Error('Generated feedback data failed validation. See logs for details.');
   }
-
-  // Construct the final Feedback object
-  const feedback: Feedback = {
-      submissionId: submission.challengeId, // Assign locally
-      createdAt: new Date().toISOString(), // Assign locally
-      strengths: parsedFeedback.strengths,
-      weaknesses: parsedFeedback.weaknesses,
-      suggestions: parsedFeedback.suggestions,
-      improvementPath: parsedFeedback.improvementPath,
-  };
-
-  // No Zod validation needed here unless we redefine a Zod schema for Markdown-parsed fields
-  // --- END NEW MARKDOWN PARSING LOGIC for Feedback ---
-
-  return feedback;
 }
 
 // Refactored: Adds studentStatus parameter to adjust prompt for introductions
@@ -579,7 +511,7 @@ export async function generateLetterResponse(
   aiMemory: string, 
   mentorProfileName: string,
   config: Config,
-  studentStatus: string // Added parameter
+  studentStatus: string
 ): Promise<LetterResponse> {
   const mentorProfile = await profile.loadMentorProfile(mentorProfileName);
   const prompt = await generateLetterResponsePrompt(
@@ -588,53 +520,20 @@ export async function generateLetterResponse(
     aiMemory,
     mentorProfile,
     config,
-    studentStatus // Pass status down
+    studentStatus
   );
-  
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY_MS = 1000;
-  let result;
-  let lastError: Error | null = null;
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-          result = await model.generateContent(prompt);
-          lastError = null;
-          break; // Exit loop on success
-      } catch (error) {
-          lastError = error instanceof Error ? error : new Error(String(error));
-          console.error(`Error calling AI model for letter response generation (Attempt ${attempt}/${MAX_RETRIES}):`, lastError);
-          if (attempt < MAX_RETRIES) {
-              console.log(`Retrying in ${RETRY_DELAY_MS / 1000}s...`);
-              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-          } else {
-              console.error("Max retries reached for letter response generation.");
-          }
-      }
-  }
-  
-  // If all retries failed, lastError will be set
-   if (lastError || !result) {
-       throw new Error(`AI API call failed after ${MAX_RETRIES} attempts during letter response generation: ${lastError?.message}`);
-   }
-  
-  const response = result.response;
-   if (!response) {
-       throw new Error("AI API call returned no response during letter response generation.");
-   }
-   const text = response.text();
-    if (typeof text !== 'string') {
-        throw new Error("AI API call returned non-text response during letter response generation.");
-    }
-  
-  try {
-    // parseLetterResponse will now throw on error
-    return await parseLetterResponse(text); 
-  } catch (error) {
-      console.error("Failed to parse letter response:", error);
-      // Re-throw the parsing error
-       throw new Error(`Failed to parse AI response for letter: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  console.log('Generating letter response (expecting Markdown response)...');
+
+  // Use the retry utility function
+  const result = await callGenerativeAIWithRetry('generateLetterResponse', prompt);
+
+  const responseText = result.response.text();
+  console.log('Raw AI Response (Letter):\n', responseText);
+
+  // Parse the response (assuming parseLetterResponse handles the raw text)
+  const letterResponse = await parseLetterResponse(responseText);
+  return letterResponse;
 }
 
 // Ensure parseLetterResponse function definition exists
@@ -670,7 +569,6 @@ export async function parseLetterResponse(responseText: string): Promise<LetterR
 }
 
 // Function to generate a narrative digest summary
-// MODIFIED: Throws error on failure
 export async function generateDigestSummary(
   aiMemory: string,
   digestType: 'weekly' | 'monthly' | 'quarterly'
@@ -683,43 +581,12 @@ ${aiMemory}
 
 Generate only the narrative summary text (markdown format allowed).`;
 
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY_MS = 1000;
-  let result;
-  let lastError: Error | null = null;
+  console.log(`Generating ${digestType} digest summary from AI memory...`);
+  
+  // Use the retry utility function
+  const result = await callGenerativeAIWithRetry(`generate${digestType}DigestSummary`, prompt);
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        console.log(`Generating ${digestType} digest summary from AI memory (Attempt ${attempt}/${MAX_RETRIES})...`);
-        result = await model.generateContent(prompt);
-        lastError = null;
-        break; // Exit loop on success
-      } catch (error) {
-          lastError = error instanceof Error ? error : new Error(String(error));
-          console.error(`Error calling AI model for ${digestType} digest summary (Attempt ${attempt}/${MAX_RETRIES}):`, lastError);
-          if (attempt < MAX_RETRIES) {
-              console.log(`Retrying in ${RETRY_DELAY_MS / 1000}s...`);
-              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-          } else {
-              console.error(`Max retries reached for ${digestType} digest summary generation.`);
-          }
-      }
-  }
-  
-  // If all retries failed, lastError will be set
-   if (lastError || !result) {
-       throw new Error(`AI API call failed after ${MAX_RETRIES} attempts during ${digestType} digest summary generation: ${lastError?.message}`);
-   }
-  
-  const response = result.response;
-   if (!response) {
-       throw new Error(`AI API call returned no response during ${digestType} digest summary generation.`);
-   }
-   const summaryText = response.text();
-    if (typeof summaryText !== 'string') {
-        throw new Error(`AI API call returned non-text response during ${digestType} digest summary generation.`);
-    }
-    
+  const summaryText = result.response.text();
   console.log(`AI ${digestType} digest summary generated successfully.`);
   return summaryText.trim();
 }
