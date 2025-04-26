@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "lastUpdated": "2025-04-26T16:52:56.487Z",
+    "activeCount": 1,
+    "archivedCount": 0
+  },
+  "activeChallenges": [
+    {
+      "id": "CC-001",
+      "title": "AWS S3 Bucket Policy for Secure Access",
+      "description": "You are designing a new AWS S3 bucket to store application logs.  The application is accessed by users in two different teams: \"TeamA\" and \"TeamB\". TeamA needs read-only access to the logs, while TeamB requires both read and write access.  Which of the following AWS IAM policies correctly grants these permissions, while adhering to the principle of least privilege? Assume both teams have IAM roles associated with them.",
+      "type": "coding",
+      "requirements": [],
+      "examples": [],
+      "hints": [],
+      "difficulty": 6,
+      "topics": [
+        "aws-s3",
+        "aws-iam-policies",
+        "security-hardening"
+      ],
+      "createdAt": "2025-04-26T16:52:56.485Z"
+    }
+  ],
+  "archivedChallenges": []
+}
