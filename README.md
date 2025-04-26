@@ -87,12 +87,16 @@ For a more detailed breakdown, see `structure.md`.
     *   Define your desired learning `topics` and your estimated `currentLevel` (1-10) for each.
     *   Adjust `difficulty`, `preferredChallengeTypes`, `mentorProfile`, `emailStyle`, and `schedule` according to your preferences.
     *   Review the `archive` settings.
-5.  **Initialize Student Profile & AI Memory (Optional):** The `student-profile.json` and `ai-memory.md` files will be created automatically on the first run if they don't exist. You can optionally create/edit `ai-memory.md` beforehand to give the AI some starting context.
+    *   **Crucially, to start receiving challenges:** Set `introductionSubmitted: true`. By default, this is `false`, and challenges will not be sent until it is set to `true`.
+5.  **Write Introduction (Optional):**
+    *   If you wish, you can write an introduction file named `introduction.md` and place it in the `letters/to-mentor/` directory.
+    *   When you push this file, the `respond-to-letters.yml` workflow will process it like any other letter: the AI mentor will generate a response based on your config and AI memory, save it to `letters/from-mentor/`, email it to you, and archive your original `introduction.md`.
+    *   **Note:** Adding this file does *not* automatically start challenges. You still need to set `introductionSubmitted: true` in `config.ts`.
 6.  **Initial Commit & Push:** Commit your changes (especially to `config.ts` and potentially `.env` *if* you add it to `.gitignore` - recommended) and push to your repository.
 7.  **Enable & Understand GitHub Actions:**
     *   Ensure GitHub Actions are enabled for your repository (usually default).
-    *   **Scheduling:** The `schedule` setting in `config.ts` (e.g., `"daily"`, `"threePerWeek"`, `"weekly"`) determines how often actions like challenge generation should logically occur. The corresponding GitHub Action workflow (e.g., `send-challenge.yml`) might run on a fixed schedule (like daily), but it contains internal logic to check your `config.ts` setting and will only proceed with generating/sending if the configured schedule aligns with the current day.
-    *   **Manual Triggers:** Most workflows (like `send-challenge.yml`, `generate-digests.yml`) also include a `workflow_dispatch` trigger. This allows you to **manually run the workflow** at any time directly from the "Actions" tab of your repository on GitHub. This is useful for getting your first challenge immediately or generating a report on demand. Simply navigate to the Actions tab, select the workflow, and click "Run workflow".
+    *   **Scheduling:** The `schedule` setting in `config.ts` (e.g., `"daily"`, `"threePerWeek"`, `"weekly"`) determines how often actions like challenge generation should logically occur. The corresponding GitHub Action workflow (e.g., `send-challenge.yml`) might run on a fixed schedule (like daily), but it contains internal logic to check your `config.ts` setting (`introductionSubmitted` must be true and the frequency must align) before proceeding.
+    *   **Manual Triggers:** Most workflows (like `send-challenge.yml`, `generate-digests.yml`) also include a `workflow_dispatch` trigger. This allows you to **manually run the workflow** at any time directly from the "Actions" tab of your repository on GitHub. This is useful for getting your first challenge immediately (after setting `introductionSubmitted: true`) or generating a report on demand. Simply navigate to the Actions tab, select the workflow, and click "Run workflow".
 
 ## 🔄 Resetting Your Progress
 
@@ -125,7 +129,7 @@ This script will:
 2.  Delete the same files and directories listed in Manual Step 2.
 3.  Print a reminder of the deleted items.
 
-**Important:** After running the script, you **still need to manually commit and push** the changes (Manual Step 3) to finalize the reset in your repository.
+**Important:** After running the script, you **still need to manually commit and push** the changes (Manual Step 3) to finalize the reset in your repository. Note that resetting will also set `introductionSubmitted` back to `false` in `config.ts` if the script modifies that file (or you'll need to manually reset it if restoring from a template).
 
 ## 🤝 Contributing
 
