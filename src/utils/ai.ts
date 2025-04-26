@@ -10,8 +10,12 @@ import type {
 } from '../types.js'
 
 // Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(environment.GEMINI_API_KEY)
-const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
+const apiKey = process.env.GEMINI_API_KEY
+if (!apiKey) {
+  throw new Error('GEMINI_API_KEY environment variable is not set')
+}
+const genAI = new GoogleGenerativeAI(apiKey)
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-04-17' })
 
 export async function generateChallengePrompt(
   config: Config,
