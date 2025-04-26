@@ -24,4 +24,4 @@ Initial state. Waiting for first interaction.
 ---
 
 ## Long-Term History & Patterns (~2000 chars - Summarized)
-*   No history recorded yet. 
+*   No history recorded yet.
