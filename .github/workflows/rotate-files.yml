@@ -1,5 +1,9 @@
 name: Rotate Files
 
+# Grant write permissions for contents
+permissions:
+  contents: write
+
 on:
   schedule:
     # Run at 1:00 AM UTC on the 1st of every month

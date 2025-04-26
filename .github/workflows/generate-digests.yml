@@ -1,5 +1,9 @@
 name: Generate Digests
 
+# Grant write permissions for contents
+permissions:
+  contents: write
+
 on:
   schedule:
     # Weekly on Sunday at 9AM UTC

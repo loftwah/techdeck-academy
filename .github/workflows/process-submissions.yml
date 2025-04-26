@@ -1,5 +1,9 @@
 name: Process Submissions
 
+# Grant write permissions for contents
+permissions:
+  contents: write
+
 on:
   push:
     paths:
