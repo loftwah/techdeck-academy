@@ -23,12 +23,12 @@ describe('Email Utilities', () => {
     subjectAreas: ['programming', 'devops'] as SubjectArea[],
     topics: {
       programming: {
-        'typescript': { currentLevel: 3, lastTested: '' },
-        'testing': { currentLevel: 2, lastTested: '' }
+        'typescript': { currentLevel: 3 },
+        'testing': { currentLevel: 2 }
       },
       devops: {
-        'docker': { currentLevel: 1, lastTested: '' },
-        'github-actions': { currentLevel: 4, lastTested: '' }
+        'docker': { currentLevel: 1 },
+        'github-actions': { currentLevel: 4 }
       }
     },
     difficulty: 5,

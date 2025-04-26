@@ -69,7 +69,7 @@ export interface Config {
 
   // Learning preferences
   subjectAreas: SubjectArea[]
-  topics: Record<string, Record<string, { currentLevel: number; lastTested: string }>>; // Category -> Topic -> Details
+  topics: Record<string, Record<string, { currentLevel: number; }>>; // Category -> Topic -> Details
   difficulty: number // 1-10
   sessionLength: number // minutes
   preferredChallengeTypes?: ChallengeType[]; // Added optional array

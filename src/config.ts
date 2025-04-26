@@ -20,19 +20,19 @@ export const config: Config = {
   subjectAreas: ['programming', 'devops', 'aws'],
   topics: {
     programming: {
-      'typescript': { currentLevel: 3, lastTested: '' },
-      'javascript': { currentLevel: 4, lastTested: '' },
-      'python': { currentLevel: 2, lastTested: '' }
+      'typescript': { currentLevel: 3 },
+      'javascript': { currentLevel: 4 },
+      'python': { currentLevel: 2 }
     },
     devops: {
-      'docker': { currentLevel: 2, lastTested: '' },
-      'kubernetes': { currentLevel: 1, lastTested: '' },
-      'ci-cd': { currentLevel: 3, lastTested: '' }
+      'docker': { currentLevel: 2 },
+      'kubernetes': { currentLevel: 1 },
+      'ci-cd': { currentLevel: 3 }
     },
     aws: {
-      'ec2': { currentLevel: 3, lastTested: '' },
-      'rds': { currentLevel: 2, lastTested: '' },
-      's3': { currentLevel: 4, lastTested: '' }
+      'ec2': { currentLevel: 3 },
+      'rds': { currentLevel: 2 },
+      's3': { currentLevel: 4 }
     }
     // Add other subject areas and topics as needed
   },
