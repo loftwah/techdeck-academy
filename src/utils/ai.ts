@@ -317,7 +317,10 @@ export async function generateChallenge(
     }
   }
 
-  // Add missing fields required by the Challenge type but maybe not by the AI
+  if (challengeJson.examples === null) {
+    challengeJson.examples = [];
+  }
+
   const challengeDataWithDefaults = {
     ...challengeJson,
     id: `CC-${Date.now()}`, // Generate ID locally
