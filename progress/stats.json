@@ -34,7 +34,16 @@
     "monthly": []
   },
   "submissions": {
-    "daily": [],
+    "daily": [
+      {
+        "date": "2025-04-27T05:14:01.569Z",
+        "count": 1,
+        "details": {
+          "submissionId": "CC-1745728838727",
+          "challengeId": "CC-1745728838727"
+        }
+      }
+    ],
     "weekly": [],
     "monthly": []
   },
@@ -77,9 +86,12 @@
     }
   },
   "activity": {
-    "daysActive": 0,
-    "streakCurrent": 0,
-    "streakLongest": 0,
-    "preferredTimes": []
+    "daysActive": 1,
+    "streakCurrent": 1,
+    "streakLongest": 1,
+    "preferredTimes": [
+      "5:00"
+    ],
+    "lastActivity": "2025-04-27T05:14:01.569Z"
   }
 }
