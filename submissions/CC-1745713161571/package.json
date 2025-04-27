@@ -1,0 +1,11 @@
+{
+  "name": "simple-node-app",
+  "version": "1.0.0",
+  "description": "Simple Node.js Hello World app for EKS deployment",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "",
+  "license": "ISC"
+} 
