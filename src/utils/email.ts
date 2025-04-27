@@ -153,10 +153,15 @@ export async function formatChallengeEmail(
   }
 }
 
+/**
+ * Formats the feedback email.
+ * @param feedback The generated feedback object (contains feedback ID).
+ * @param challenge The original challenge object.
+ * @param emailStyle The desired email style.
+ */
 export async function formatFeedbackEmail(
-  feedback: Feedback,
-  submission: { challengeId: string },
-  challenge: Challenge,
+  feedback: Feedback, // Contains the feedback ID (e.g., CC-123-timestamp)
+  challenge: Challenge, // Kept challenge object for title, etc.
   emailStyle: EmailStyle
 ): Promise<{ subject: string; html: string }> {
   try {
@@ -171,10 +176,11 @@ export async function formatFeedbackEmail(
 
     const renderedContent = template(templateData);
     const finalHtml = baseTemplateWrapper(renderedContent);
-    validateEmailContent({ subject: `Feedback: ${challenge.title}`, html: finalHtml });
+    const subject = `Feedback: ${challenge.title}`; // Keep subject based on challenge title
+    validateEmailContent({ subject: subject, html: finalHtml });
 
     return {
-      subject: `Feedback: ${challenge.title}`,
+      subject: subject,
       html: finalHtml
     };
   } catch (error) {

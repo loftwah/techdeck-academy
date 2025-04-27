@@ -27,7 +27,7 @@ TechDeck Academy operates primarily through a set of GitHub Actions:
     *   Adds locally generated `id`, `createdAt`, and locally determined `type` and `difficulty` (from config).
     *   Validates and saves the complete challenge object as a `.json` file in `challenges/`.
     *   Sends email notification.
-4.  **Submission Processing (`process-submissions.yml`):** Triggered by push to `submissions/`. Calls `ai.generateFeedback`. This function:
+4.  **Submission Processing (`process-submissions.yml`):** Triggered by push changes within subdirectories of `submissions/`. Detects the changed directory, reads its contents, and calls `ai.generateFeedback`. This function:
     *   Prompts AI for **Markdown** feedback (Strengths, Weaknesses, Suggestions, Improvement Path), asking it to include score/justification *in the text* and suggest config review if needed.
     *   Parses the AI's Markdown response locally, **ignoring any score text.**
     *   Creates a `Feedback` object (no `score` field) with local `submissionId`, `createdAt` and parsed qualitative fields.
@@ -65,7 +65,7 @@ techdeck-academy/
 │   │   └── ...
 │   └── scripts/           # Scripts executed by workflows
 ├── challenges/            # Stores generated challenges (structured JSON)
-├── submissions/           # User pushes solutions here
+├── submissions/           # User pushes solution directories here (e.g., submissions/CC-123/)
 ├── feedback/              # Stores AI-generated feedback (structured JSON, no score)
 ├── letters/               # Stores user questions and mentor responses
 │   ├── to-mentor/         # User pushes questions here (.md)
@@ -89,9 +89,10 @@ techdeck-academy/
 2.  **Install:** `npm install`
 3.  **API Keys:** Create `.env` with `GEMINI_API_KEY` and `RESEND_API_KEY`. **Crucially, also add these as GitHub Secrets in your repo settings.**
 4.  **Customize `config.ts`:** Set `userEmail`, `githubUsername`, `topics` & `currentLevel`, `difficulty`, `mentorProfile`, etc. Decide on `introductionSubmitted` (default `false` recommended).
-5.  **First Letter (if `introductionSubmitted: false`):** Create `.md` file in `letters/to-mentor/` with intro/goals. Commit & push.
-6.  **Commit & Push Config:** Commit `config.ts` (and `.gitignore` if `.env` added). Push.
-7.  **Enable & Understand Actions:** Check Actions tab. `send-challenge.yml` needs `status: 'active'` (set after first letter OR via `introductionSubmitted: true`). Use `workflow_dispatch` for manual runs if needed.
+5.  **First Letter (if `introductionSubmitted: false`):** Create `.md` file in `letters/to-mentor/` with intro/goals. Commit & push. (This activates challenge generation).
+6.  **Submit Challenge:** Once you receive a challenge, create a directory in `submissions/` named after the challenge ID (e.g., `submissions/CC-123/`). Place your solution files inside this directory. Commit & push.
+7.  **Commit & Push Config:** Commit `config.ts` (and `.gitignore` if `.env` added). Push.
+8.  **Enable & Understand Actions:** Check Actions tab. `send-challenge.yml` needs `status: 'active'` (set after first letter OR via `introductionSubmitted: true`). `process-submissions.yml` triggers on pushes to `submissions/**`. Use `workflow_dispatch` for manual runs if needed.
 
 ## 🔄 Resetting Your Progress
 
@@ -100,7 +101,7 @@ To reset (delete state files), use:
 ```bash
 npm run reset
 ```
-**Then commit and push the deletions.** This clears `student-profile.json`, `ai-memory.md`, `challenges/`, `submissions/`, `feedback/`, `letters/`, `progress/`, `archive/`. You'll need to restart the introduction flow (submit first letter or set config flag) to get challenges again.
+**Then commit and push the deletions.** This clears `student-profile.json`, `ai-memory.md`, `challenges/`, directories within `submissions/`, `feedback/`, `letters/`, `progress/`, `archive/`. You'll need to restart the introduction flow (submit first letter or set config flag) to get challenges again.
 
 ## 🤝 Contributing
 

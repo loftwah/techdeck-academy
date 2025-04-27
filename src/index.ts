@@ -76,46 +76,88 @@ async function generateChallenge(): Promise<void> {
   console.log(`Challenge "${challenge.title}" generated and sent`)
 }
 
-// Process a submission and provide feedback
-async function processSubmission(submission: Submission): Promise<void> {
-  const challenge = await files.readChallenge(submission.challengeId)
+/**
+ * Processes a submission directory, generates feedback, updates state, and sends email.
+ * @param submissionDirPath The path to the submission directory (e.g., 'submissions/CC-123').
+ */
+async function processSubmission(submissionDirPath: string): Promise<void> {
+  console.log(`Processing submission directory: ${submissionDirPath}`);
 
-  // Check if the challenge was loaded successfully
-  if (!challenge) {
-      console.error(`CRITICAL: Challenge ${submission.challengeId} not found or failed to load. Cannot process submission.`);
-      // TODO: Implement error notification or move submission to a failed state?
-      throw new Error(`Challenge ${submission.challengeId} not found or invalid.`);
+  // Extract challenge ID from directory path/name
+  const challengeId = path.basename(submissionDirPath);
+  if (!challengeId || !challengeId.startsWith('CC-')) { // Basic validation
+    console.error(`CRITICAL: Could not determine valid Challenge ID from directory path: ${submissionDirPath}`);
+    throw new Error(`Invalid submission directory name format: ${submissionDirPath}`);
   }
 
-  // Now it's safe to use challenge
-  const aiMemory = await readAIMemoryRaw()
+  // 1. Read the corresponding Challenge file
+  const challenge = await files.readChallenge(challengeId);
+  if (!challenge) {
+    console.error(`CRITICAL: Challenge ${challengeId} not found or failed to load. Cannot process submission for ${submissionDirPath}.`);
+    // TODO: Consider moving directory to a 'failed' state?
+    throw new Error(`Challenge ${challengeId} not found or invalid.`);
+  }
+  console.log(`Found challenge: ${challenge.title}`);
 
-  // Save the submission
-  await files.writeSubmission(submission)
+  // 2. Read the content of the submission directory
+  const submissionContent = await files.readSubmissionDirectoryContent(submissionDirPath);
+  if (submissionContent === null) {
+    console.error(`CRITICAL: Failed to read content from submission directory: ${submissionDirPath}`);
+    // TODO: Consider moving directory to a 'failed' state?
+    throw new Error(`Failed to read content from submission directory: ${submissionDirPath}`);
+  }
+  console.log(`Read content from ${submissionDirPath}. Length: ${submissionContent.length}`);
 
-  // Generate feedback
+  // 3. Get AI context/memory
+  const aiMemory = await readAIMemoryRaw();
+
+  // 4. Generate feedback using AI
+  // Note: We need to adapt ai.generateFeedback to accept content string + challenge ID
+  // instead of the old Submission object.
+  console.log(`Generating feedback for ${challengeId}...`);
   const feedback = await ai.generateFeedback(
-    challenge, // challenge is guaranteed to be non-null here
-    submission,
+    challenge, // Pass the loaded challenge object
+    submissionContent, // Pass the combined content string
+    challengeId, // Pass the extracted challenge ID
     aiMemory,
     config.mentorProfile
-  )
+  );
+  console.log(`Feedback generated for submission ${challengeId}`);
 
-  // Save the feedback
-  await files.writeFeedback(feedback)
-  await stats.addSubmissionStats(submission, feedback)
-  await profile.updateProfileWithFeedback(config, challenge, feedback) // challenge is non-null
+  // 5. Save the feedback
+  // We still need a unique ID for the feedback file. Using the challenge ID might
+  // cause overwrites if retried. Let's use challengeId + timestamp for feedback filename.
+  const feedbackId = `${challengeId}-${Date.now()}`; 
+  // Modify the feedback object to use this new ID before saving
+  const feedbackToSave = { ...feedback, submissionId: feedbackId }; 
+  await files.writeFeedback(feedbackToSave);
+  console.log(`Feedback saved as ${feedbackId}.json`);
 
-  // Format and send email
+  // 6. Update Stats
+  // Adapt addSubmissionStats to accept needed info directly
+  const submittedAt = new Date().toISOString(); // Use current time as submission time
+  await stats.addSubmissionStats(challengeId, submittedAt, feedbackToSave); 
+  console.log(`Stats updated for ${challengeId}`);
+
+  // 7. Update Profile
+  // updateProfileWithFeedback might need adjustment if it relied on the old Submission object
+  // For now, assume it primarily needs the challenge and feedback objects.
+  await profile.updateProfileWithFeedback(config, challenge, feedbackToSave);
+  console.log(`Profile updated after feedback for ${challengeId}`);
+
+  // 8. Format and send email
+  // Adapt formatFeedbackEmail call
   const emailContent = await email.formatFeedbackEmail(
-    feedback,
-    submission,
-    challenge, // challenge is non-null
+    feedbackToSave, // Pass the feedback object with the unique ID
+    challenge, // Pass the challenge object
     config.emailStyle
-  )
-  await email.sendEmail(config, emailContent)
+  );
+  await email.sendEmail(config, emailContent);
+  console.log(`Feedback email sent for ${challengeId}`);
 
-  console.log(`Feedback generated for submission ${submission.challengeId}`)
+  // 9. Old step: Save submission (files.writeSubmission) - Not needed, files are already there.
+
+  console.log(`Successfully processed submission for challenge ${challengeId} in directory ${submissionDirPath}`);
 }
 
 // Archive old content

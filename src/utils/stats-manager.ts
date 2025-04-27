@@ -87,46 +87,54 @@ export async function addChallengeStats(challenge: Challenge): Promise<void> {
   await writeStats(stats)
 }
 
+/**
+ * Adds stats for a completed submission.
+ * @param challengeId The ID of the challenge submitted.
+ * @param submittedAt ISO string timestamp of when the submission was processed.
+ * @param feedback The feedback object generated (contains the unique feedback/submission ID).
+ */
 export async function addSubmissionStats(
-  submission: Submission,
+  challengeId: string,
+  submittedAt: string,
   feedback: Feedback
 ): Promise<void> {
   const stats = await readStats()
-  const date = new Date().toISOString()
+  const date = submittedAt
 
   // Add to daily stats
   stats.submissions.daily.push({
     date,
     count: 1,
     details: {
-      submissionId: feedback.submissionId ?? submission.challengeId,
+      submissionId: feedback.submissionId,
+      challengeId: challengeId
     }
   })
 
   // Update activity
-  const todayDate = new Date();
-  const todayString = todayDate.toDateString();
-  const lastActive = stats.activity.lastActivity ? new Date(stats.activity.lastActivity).toDateString() : null;
+  const todayDate = new Date(submittedAt)
+  const todayString = todayDate.toDateString()
+  const lastActive = stats.activity.lastActivity ? new Date(stats.activity.lastActivity).toDateString() : null
   
   if (todayString !== lastActive) {
-    stats.activity.daysActive++;
-    const yesterday = new Date();
-    yesterday.setDate(todayDate.getDate() - 1);
-    const yesterdayString = yesterday.toDateString();
+    stats.activity.daysActive++
+    const yesterday = new Date(todayDate)
+    yesterday.setDate(todayDate.getDate() - 1)
+    const yesterdayString = yesterday.toDateString()
 
     if (lastActive === yesterdayString) {
-      stats.activity.streakCurrent++;
+      stats.activity.streakCurrent++
     } else {
-      stats.activity.streakCurrent = 1;
+      stats.activity.streakCurrent = 1
     }
     stats.activity.streakLongest = Math.max(
       stats.activity.streakCurrent,
       stats.activity.streakLongest
-    );
+    )
   }
 
   // Update preferred times
-  const hour = new Date().getHours()
+  const hour = new Date(submittedAt).getHours()
   stats.activity.preferredTimes.push(`${hour}:00`)
   stats.activity.preferredTimes = stats.activity.preferredTimes.slice(-100)
   

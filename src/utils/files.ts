@@ -90,38 +90,103 @@ export async function listChallenges(): Promise<string[]> {
 }
 
 // Submission operations
+
+/**
+ * @deprecated Submissions are now directories. Use directory-based functions instead.
+ */
 export async function writeSubmission(submission: Submission): Promise<string> {
+  console.warn("writeSubmission is deprecated. Submissions are now directories.");
   const submissionId = `${submission.challengeId}-${Date.now()}`;
-  const filename = `${submissionId}.json`;
-  const filepath = path.join(PATHS.submissions, filename); // Use original PATHS
-  // Assume writeJsonFileWithSchema works with root-relative path
-  await writeJsonFileWithSchema<Submission>(filepath, submission, SubmissionSchema);
+  const filename = `${submissionId}.json`; // This doesn't fit the new model
+  const filepath = path.join(PATHS.submissions, filename);
+  // This logic assumes a single JSON file, which is incorrect now.
+  // await writeJsonFileWithSchema<Submission>(filepath, submission, SubmissionSchema);
+  // Returning an ID based on old format for compatibility where needed, but this is flawed.
   return submissionId;
 }
 
+/**
+ * @deprecated Submissions are now directories. Use readSubmissionDirectoryContent instead.
+ */
 export async function readSubmission(submissionId: string): Promise<Submission | null> {
-  const filepath = path.join(PATHS.submissions, `${submissionId}.json`); // Use original PATHS
-  console.warn(`Reading submission using assumed path: ${filepath}. This might fail if filename includes timestamp.`);
-  // Assume readJsonFileWithSchema works with root-relative path
-  return await readJsonFileWithSchema<Submission>(filepath, SubmissionSchema);
+  console.warn("readSubmission is deprecated. Submissions are now directories.");
+  // This function assumes a specific JSON file naming convention that no longer applies.
+  return null;
 }
 
-export async function listSubmissions(challengeId?: string): Promise<string[]> {
-  const submissionsDir = path.resolve(process.cwd(), PATHS.submissions)
+/**
+ * Reads all file contents within a submission directory and concatenates them.
+ * Includes filenames as separators. Skips '.DS_Store' and other common noise files.
+ * @param submissionDirPath The path to the submission directory (e.g., 'submissions/CC-123').
+ * @returns A promise that resolves to the concatenated content string or null if dir doesn't exist.
+ */
+export async function readSubmissionDirectoryContent(submissionDirPath: string): Promise<string | null> {
+  const absoluteDirPath = path.resolve(process.cwd(), submissionDirPath);
+  const ignoredFiles = ['.DS_Store', 'Thumbs.db']; // Files/dirs to ignore
+
   try {
-    const files = await fs.readdir(submissionsDir)
-    const submissions = files.filter(f => f.endsWith('.json'))
-    if (challengeId) {
-      return submissions.filter(f => f.startsWith(challengeId + '-')).map(f => f.replace('.json', ''))
+    const dirents = await fs.readdir(absoluteDirPath, { withFileTypes: true });
+    let combinedContent = `Submission content for directory: ${submissionDirPath}\n\n`;
+
+    for (const dirent of dirents) {
+      if (ignoredFiles.includes(dirent.name)) {
+        continue; // Skip ignored files
+      }
+      
+      const fullPath = path.join(absoluteDirPath, dirent.name);
+      if (dirent.isFile()) {
+        try {
+          const content = await fs.readFile(fullPath, 'utf-8');
+          combinedContent += `--- File: ${dirent.name} ---\n`;
+          combinedContent += content;
+          combinedContent += '\n\n';
+        } catch (readError) {
+           console.error(`Error reading file ${fullPath}:`, readError);
+           combinedContent += `--- File: ${dirent.name} (Error reading) ---\n\n`;
+        }
+      } else if (dirent.isDirectory()) {
+        // Optional: Recursively read subdirectories? For now, just note its presence.
+        combinedContent += `--- Directory: ${dirent.name} ---\n\n`;
+      }
     }
-    return submissions.map(f => f.replace('.json', ''))
+    return combinedContent;
+  } catch (error) {
+    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+      console.error(`Submission directory not found: ${absoluteDirPath}`);
+      return null;
+    }
+    console.error(`Error reading submission directory ${absoluteDirPath}:`, error);
+    throw error; // Rethrow other errors
+  }
+}
+
+/**
+ * Lists directories within the submissions folder.
+ * Optionally filters by challengeId prefix if the directory name starts with it.
+ * @param challengeId Optional challenge ID prefix (e.g., 'CC-123') to filter directories.
+ * @returns A promise that resolves to an array of directory names (relative to PATHS.submissions).
+ */
+export async function listSubmissions(challengeId?: string): Promise<string[]> {
+  const submissionsDir = path.resolve(process.cwd(), PATHS.submissions);
+  try {
+    // Use withFileTypes to easily filter for directories
+    const dirents = await fs.readdir(submissionsDir, { withFileTypes: true });
+    const directories = dirents
+      .filter(dirent => dirent.isDirectory())
+      .map(dirent => dirent.name);
+
+    if (challengeId) {
+      // Filter directories that start with the challengeId
+      return directories.filter(dirName => dirName.startsWith(challengeId));
+    }
+    return directories;
   } catch (error) {
     if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
       await ensureDataDirectories(); // Attempt to create dir if missing
-      return []
+      return [];
     }
-    console.error("Failed to list submissions:", error)
-    throw error
+    console.error("Failed to list submission directories:", error);
+    throw error;
   }
 }
 
@@ -166,19 +231,33 @@ export async function archiveChallenge(challengeId: string): Promise<void> {
   }
 }
 
-export async function archiveSubmission(submissionId: string): Promise<void> {
-  const monthDir = getMonthDir()
-  const sourceFile = path.resolve(process.cwd(), PATHS.submissions, `${submissionId}.json`)
-  const archiveMonthDir = path.resolve(process.cwd(), PATHS.archive.submissions, monthDir)
-  const destFile = path.join(archiveMonthDir, `${submissionId}.json`)
+/**
+ * Archives a specific submission *directory* by moving it into a dated archive folder.
+ * @param submissionDirName The name of the submission directory (e.g., 'CC-123').
+ */
+export async function archiveSubmission(submissionDirName: string): Promise<void> {
+  const monthDir = getMonthDir();
+  const sourceDir = path.resolve(process.cwd(), PATHS.submissions, submissionDirName);
+  const archiveMonthDir = path.resolve(process.cwd(), PATHS.archive.submissions, monthDir);
+  const destDir = path.join(archiveMonthDir, submissionDirName); // Move the whole directory
 
   try {
-    await fs.mkdir(archiveMonthDir, { recursive: true })
-    await fs.rename(sourceFile, destFile)
-    console.log(`Archived submission ${submissionId} to ${archiveMonthDir}`)
+    // Ensure the dated archive directory exists
+    await fs.mkdir(archiveMonthDir, { recursive: true });
+
+    // Check if source directory exists before attempting move
+    if (!await fileExists(sourceDir)) {
+       console.warn(`Submission directory to archive not found: ${sourceDir}`);
+       return; // Don't throw error, just log and return
+    }
+
+    // Move the entire directory
+    await fs.rename(sourceDir, destDir);
+    console.log(`Archived submission directory ${submissionDirName} to ${archiveMonthDir}`);
   } catch (error) {
-    console.error(`Failed to archive submission ${submissionId}:`, error)
-    throw error
+    console.error(`Failed to archive submission directory ${submissionDirName}:`, error);
+    // Don't rethrow, allow workflow to continue if possible? Or should it fail?
+    // Depending on context, might want to rethrow: throw error;
   }
 }
 

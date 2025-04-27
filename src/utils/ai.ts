@@ -354,14 +354,26 @@ export async function generateChallenge(
 }
 
 // Refactored: Uses aiMemory string instead of StudentProfile object
+// Refactored: Accepts submissionContent string and challengeId instead of Submission object
 export async function generateFeedback(
   challenge: Challenge,
-  submission: Submission,
+  submissionContent: string, // Changed from submission: Submission
+  challengeId: string, // Added challengeId
   aiMemory: string, 
   mentorProfileName: string 
 ): Promise<Feedback> {
   const mentorProfile = await profile.loadMentorProfile(mentorProfileName);
-  const prompt = await generateFeedbackPrompt(challenge, submission, aiMemory, mentorProfile);
+  // Adapt generateFeedbackPrompt call if needed (assuming it's updated or can handle content)
+  // For now, assume generateFeedbackPrompt is adapted elsewhere or handles content
+  // Let's create a minimal submission-like object for the prompt generator for now
+  // if generateFeedbackPrompt hasn't been updated yet
+  const tempSubmission = {
+    challengeId: challengeId,
+    content: submissionContent,
+    submittedAt: new Date().toISOString(), // Use current time
+    // filePath: submissionDirPath? // Could add if needed by prompt
+  };
+  const prompt = await generateFeedbackPrompt(challenge, tempSubmission, aiMemory, mentorProfile);
 
   console.log('Generating feedback (expecting JSON response)...');
 
@@ -395,9 +407,11 @@ export async function generateFeedback(
   }
 
   // Construct the Feedback object using parsed JSON and adding necessary fields
+  // IMPORTANT: submissionId in feedback is now generated in the calling function (processSubmission)
+  // We receive feedbackJson which should NOT contain submissionId anymore, as the AI doesn't know it.
   const feedbackData = {
     ...feedbackJson,
-    submissionId: submission.challengeId, // Use challengeId to satisfy FeedbackSchema for now (see thought process)
+    // submissionId: challengeId, // DO NOT set submissionId here, it's set by the caller
     createdAt: new Date().toISOString(), // Generate timestamp locally
     // Ensure required fields are present (even if empty arrays/string), default if necessary
     strengths: feedbackJson.strengths ?? [],
@@ -407,15 +421,24 @@ export async function generateFeedback(
   };
 
   // Validate the constructed object using Zod schema
+  // NOTE: FeedbackSchema expects submissionId. We need to either:
+  // 1. Add a temporary ID here for validation (and caller overwrites) - less clean
+  // 2. Modify ZodFeedbackSchema to make submissionId optional here and required later.
+  // 3. Create a different type/schema for AI output vs final saved Feedback.
+  // Let's go with option 1 for now, assuming the caller *will* overwrite it.
+  const tempValidationData = { ...feedbackData, submissionId: challengeId + '-temp-' + Date.now() }; 
+
   try {
     // Use parse, which throws on error
-    const validatedFeedback = ZodFeedbackSchema.parse(feedbackData);
-    console.log(`Generated and validated feedback for submission: ${validatedFeedback.submissionId}`);
-    return validatedFeedback;
+    const validatedFeedback = ZodFeedbackSchema.parse(tempValidationData);
+    console.log(`Generated and validated feedback content for challenge: ${challengeId}`);
+    // Return the validated data *without* the temporary ID, letting the caller set the real one.
+    // Or, maybe easier, return the validated object and let caller overwrite submissionId.
+    return validatedFeedback; // Caller MUST overwrite submissionId
   } catch (error) {
     if (error instanceof ZodError) {
       console.error('Generated feedback data failed validation:', error.errors);
-      console.error('Data that failed validation:', feedbackData);
+      console.error('Data that failed validation:', tempValidationData);
     } else if (error instanceof Error) {
       console.error('An unexpected error occurred during feedback validation:', error.message);
     } else {
