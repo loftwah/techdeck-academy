@@ -43,7 +43,7 @@ jobs:
           INPUT_FORCEROTATION: ${{ github.event.inputs.forceRotation }}
         # Run the compiled TS script and capture its stdout
         run: |
-          output=$(node dist/scripts/check-rotation-needed.js)
+          output=$(node dist/src/scripts/check-rotation-needed.mjs)
           echo "Output from script: $output"
           echo "should_rotate=$output" >> $GITHUB_OUTPUT
 

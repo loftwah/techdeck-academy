@@ -101,8 +101,8 @@ jobs:
             # Generate and print AI Summary section first
             echo "## AI Summary"
             node --input-type=module -e '
-              import { readAIMemoryRaw } from "./dist/utils/ai-memory-manager.js";
-              import { generateDigestSummary } from "./dist/utils/ai.js";
+              import { readAIMemoryRaw } from "./dist/src/utils/ai-memory-manager.mjs";
+              import { generateDigestSummary } from "./dist/src/utils/ai.mjs";
               
               async function main() {
                 try {
@@ -122,8 +122,8 @@ jobs:
             # Generate and print Statistics section second
             echo "## Statistics"
             node --input-type=module -e '
-              import * as stats from "./dist/utils/stats-manager.js";
-              import * as profile from "./dist/utils/profile-manager.js";
+              import * as stats from "./dist/src/utils/stats-manager.mjs";
+              import * as profile from "./dist/src/utils/profile-manager.mjs";
               
               async function main() {
                 try {
