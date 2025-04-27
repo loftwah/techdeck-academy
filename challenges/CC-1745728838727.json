@@ -1,0 +1,38 @@
+{
+  "id": "CC-1745728838727",
+  "title": "Secure and Scalable Web App Deployment with Terraform and Kubernetes",
+  "description": "Create a Terraform configuration that deploys a simple Node.js web application to a Kubernetes cluster on AWS. The deployment must include security best practices, such as using IAM roles for authentication, and demonstrate scalability through the use of deployments and services.",
+  "type": "iac",
+  "requirements": [
+    "Use Terraform to provision the following AWS resources: EC2 instances for the Kubernetes cluster (minimum 2 nodes), an EKS cluster, an RDS PostgreSQL database, and an S3 bucket for application assets.",
+    "Configure Kubernetes deployments and services to manage the application's scaling and availability.",
+    "Use AWS IAM roles for authentication and authorization.",
+    "Implement a simple Node.js web application that connects to the RDS database.",
+    "The Terraform configuration must be well-structured, modular, and easy to understand.",
+    "The application should be accessible via a publicly routable load balancer."
+  ],
+  "examples": [
+    {
+      "type": "text",
+      "content": "Example Node.js application code (simplified):\n```javascript\nconst express = require('express');\nconst app = express();\nconst port = 3000;\n\napp.get('/', (req, res) => {\n  res.send('Hello from Kubernetes!');\n});\n\napp.listen(port, () => {\n  console.log(`App listening on port ${port}`);\n});\n```"
+    }
+  ],
+  "hints": [
+    "Consider using the `aws-eks` and `aws-iam` providers in your Terraform configuration.",
+    "Utilize Kubernetes Deployments for managing application replicas.",
+    "Use a Kubernetes Service of type LoadBalancer to expose the application publicly."
+  ],
+  "difficulty": 6,
+  "topics": [
+    "terraform",
+    "kubernetes",
+    "aws-ec2",
+    "aws-rds",
+    "aws-s3",
+    "aws-iam-policies",
+    "security-hardening",
+    "scaling-strategies",
+    "docker"
+  ],
+  "createdAt": "2025-04-27T04:40:38.727Z"
+}

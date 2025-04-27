@@ -1,0 +1,85 @@
+{
+  "meta": {
+    "lastCompaction": "2025-04-27T04:40:35.195Z",
+    "version": 1,
+    "retentionPolicy": {
+      "daily": 30,
+      "weekly": 90,
+      "monthly": 365
+    }
+  },
+  "challenges": {
+    "daily": [
+      {
+        "date": "2025-04-27T04:40:38.731Z",
+        "count": 1,
+        "details": {
+          "challengeId": "CC-1745728838727",
+          "topics": [
+            "terraform",
+            "kubernetes",
+            "aws-ec2",
+            "aws-rds",
+            "aws-s3",
+            "aws-iam-policies",
+            "security-hardening",
+            "scaling-strategies",
+            "docker"
+          ],
+          "difficulty": 6
+        }
+      }
+    ],
+    "weekly": [],
+    "monthly": []
+  },
+  "submissions": {
+    "daily": [],
+    "weekly": [],
+    "monthly": []
+  },
+  "topics": {
+    "terraform": {
+      "completedChallenges": 0,
+      "lastActivity": "2025-04-27T04:40:38.731Z"
+    },
+    "kubernetes": {
+      "completedChallenges": 0,
+      "lastActivity": "2025-04-27T04:40:38.731Z"
+    },
+    "aws-ec2": {
+      "completedChallenges": 0,
+      "lastActivity": "2025-04-27T04:40:38.731Z"
+    },
+    "aws-rds": {
+      "completedChallenges": 0,
+      "lastActivity": "2025-04-27T04:40:38.731Z"
+    },
+    "aws-s3": {
+      "completedChallenges": 0,
+      "lastActivity": "2025-04-27T04:40:38.731Z"
+    },
+    "aws-iam-policies": {
+      "completedChallenges": 0,
+      "lastActivity": "2025-04-27T04:40:38.731Z"
+    },
+    "security-hardening": {
+      "completedChallenges": 0,
+      "lastActivity": "2025-04-27T04:40:38.731Z"
+    },
+    "scaling-strategies": {
+      "completedChallenges": 0,
+      "lastActivity": "2025-04-27T04:40:38.731Z"
+    },
+    "docker": {
+      "completedChallenges": 0,
+      "lastActivity": "2025-04-27T04:40:38.731Z"
+    }
+  },
+  "activity": {
+    "daysActive": 0,
+    "streakCurrent": 0,
+    "streakLongest": 0,
+    "preferredTimes": []
+  }
+}
