@@ -13,6 +13,9 @@ import type {
   LetterResponse
 } from '../types.js'
 
+// Register Handlebars helpers
+handlebars.registerHelper('eq', (a, b) => a === b);
+
 const resend = new Resend(environment.RESEND_API_KEY)
 
 // Correctly define __dirname for ES Modules
