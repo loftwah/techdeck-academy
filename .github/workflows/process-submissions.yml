@@ -77,13 +77,13 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
           # Initialize the application (assuming initialization is still needed once)
-          # Ensure dist/index.js is built if not already
-          if [ ! -f dist/index.js ]; then
+          # Ensure dist/index.mjs is built if not already
+          if [ ! -f dist/src/index.mjs ]; then
             echo "Building project..."
             npm run build
           fi
           node -e "
-            import('./dist/src/index.js').then(async ({initialize}) => {
+            import('./dist/src/index.mjs').then(async ({initialize}) => {
               await initialize();
             }).catch(err => { console.error('Initialization failed:', err); process.exit(1); });
           "
@@ -95,7 +95,7 @@ jobs:
           'export SUBMISSION_DIR="{}"; \
             echo "Processing submission directory: $SUBMISSION_DIR"; \
             node -e "\
-              import(\"./dist/src/index.js\").then(async ({processSubmission}) => { \
+              import(\"./dist/src/index.mjs\").then(async ({processSubmission}) => { \
                 const dirPath = process.env.SUBMISSION_DIR; \
                 if (!dirPath) { throw new Error(\"SUBMISSION_DIR env var not set\"); } \
                 await processSubmission(dirPath); \
