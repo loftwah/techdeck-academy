@@ -126,11 +126,9 @@ async function processSubmission(submissionDirPath: string): Promise<void> {
   // 5. Save the feedback
   // Create a unique ID *for the filename* using a timestamp.
   const feedbackFilenameId = `${challengeId}-${Date.now()}`; 
-  // Create a new object specifically for writing to the file,
-  // overwriting the submissionId ONLY for the purpose of matching the filename derived by writeFeedback.
-  const feedbackDataForFile = { ...feedback, submissionId: feedbackFilenameId }; 
-  // Write the file. writeFeedback uses feedbackDataForFile.submissionId to determine the filename.
-  await files.writeFeedback(feedbackDataForFile);
+  // Write the file, passing the original feedback object for validation 
+  // and the feedbackFilenameId to be used for the actual filename.
+  await files.writeFeedback(feedback, feedbackFilenameId); 
   console.log(`Feedback saved to file: ${feedbackFilenameId}.json`);
 
   // 6. Update Stats

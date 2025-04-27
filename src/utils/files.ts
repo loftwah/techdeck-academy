@@ -191,15 +191,43 @@ export async function listSubmissions(challengeId?: string): Promise<string[]> {
 }
 
 // Feedback operations
-export function getFeedbackFilePath(submissionId: string): string {
-  // Use original PATHS
-  return path.join(PATHS.feedback, `${submissionId}.json`);
+
+// Modified: Now accepts an optional filenameId to decouple filename from data.submissionId
+export function getFeedbackFilePath(identifier: string): string {
+  // Identifier is now either the original submissionId OR the filenameId
+  return path.join(PATHS.feedback, `${identifier}.json`);
 }
 
-export async function writeFeedback(feedback: Feedback): Promise<void> {
-  const filepath = getFeedbackFilePath(feedback.submissionId);
-  // Assume writeJsonFileWithSchema works with root-relative path
-  await writeJsonFileWithSchema<Feedback>(filepath, feedback, FeedbackSchema);
+/**
+ * Writes feedback data to a file.
+ * 
+ * @param feedback The original, validated Feedback object (with correct submissionId).
+ * @param filenameId Optional. If provided, this ID (e.g., challengeId + timestamp) is used 
+ *                   for the filename, and the submissionId *within the written file* will also
+ *                   be set to this filenameId. If omitted, the filename and the submissionId
+ *                   within the file will be taken from feedback.submissionId.
+ */
+export async function writeFeedback(feedback: Feedback, filenameId?: string): Promise<void> {
+  // Determine the ID to use for the filename and potentially within the data
+  const effectiveId = filenameId ?? feedback.submissionId;
+  const filepath = getFeedbackFilePath(effectiveId);
+
+  // Prepare the data object to be actually written to the file
+  // If a specific filenameId was given, use it *inside* the data object too,
+  // otherwise, the data object remains unchanged.
+  const dataToWrite = filenameId ? { ...feedback, submissionId: filenameId } : feedback;
+
+  // Call the helper, passing:
+  // 1. The final filepath.
+  // 2. The data object potentially modified for the file (dataToWrite).
+  // 3. The schema.
+  // 4. The ORIGINAL feedback object for validation purposes.
+  await writeJsonFileWithSchema<Feedback>(
+    filepath,          // Use the path derived from effectiveId
+    dataToWrite,       // Write the potentially modified data
+    FeedbackSchema,    // The schema to use
+    feedback           // Validate the ORIGINAL feedback object
+  );
 }
 
 export async function readFeedback(submissionId: string): Promise<Feedback | null> {

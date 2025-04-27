@@ -78,27 +78,32 @@ export async function readJsonFileWithSchema<T>(
 }
 
 /**
- * Validates data against a Zod schema and writes it to a JSON file.
+ * Validates data (or optional separate data for validation) against a Zod schema and writes the primary data to a JSON file.
  * Creates directories if they don't exist.
- * Throws ZodError if the data is invalid *before* writing.
+ * Throws ZodError if the data to validate is invalid *before* writing.
  * Throws FileWriteError for filesystem issues during writing.
  */
 export async function writeJsonFileWithSchema<T>(
   relativeFilePath: string,
-  data: T,
-  schema: ZodType<T>
+  data: T, // The data object to be WRITTEN to the file
+  schema: ZodType<T>,
+  dataToValidate?: T // Optional: A potentially different object to VALIDATE against the schema
 ): Promise<void> {
-  // Validate data before attempting to write
-  const validationResult = schema.safeParse(data);
+  // Use the provided dataToValidate if available, otherwise default to validating the data being written
+  const objectToValidate = dataToValidate !== undefined ? dataToValidate : data;
+  
+  // Validate the object designated for validation
+  const validationResult = schema.safeParse(objectToValidate);
   if (!validationResult.success) {
-    // Throw ZodError directly for invalid data provided to the function
+    // Throw ZodError directly for invalid data provided for validation
      throw new ZodError(validationResult.error.errors);
   }
 
   const absolutePath = path.resolve(process.cwd(), relativeFilePath);
   try {
     await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-    const content = JSON.stringify(validationResult.data, null, 2); // Use validated data
+    // IMPORTANT: Stringify and write the main 'data' object, NOT necessarily the validated one
+    const content = JSON.stringify(data, null, 2); 
     await fs.writeFile(absolutePath, content, 'utf-8');
   } catch (error) {
      if (error instanceof Error) {
