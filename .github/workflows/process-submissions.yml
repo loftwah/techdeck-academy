@@ -85,13 +85,20 @@ jobs:
 
           # Process each submission directory
           # Use xargs to handle potential spaces/newlines in directory names robustly
-          echo "${{ steps.identify-submissions.outputs.submission_dirs }}" | xargs -n 1 -I {} bash -c ' \
-            echo "Processing submission directory: {}"; \
-            node -e " \
+          # Pass directory path as environment variable to avoid quoting issues
+          echo "${{ steps.identify-submissions.outputs.submission_dirs }}" | xargs -I {} bash -c \
+          'export SUBMISSION_DIR="{}"; \
+            echo "Processing submission directory: $SUBMISSION_DIR"; \
+            node -e "\
               import(\"./dist/src/index.js\").then(async ({processSubmission}) => { \
-                await processSubmission(\"{}\" ); \
-              }).catch(err => { console.error(\"Error processing directory {}:\", err); process.exit(1); }); \
-            '
+                const dirPath = process.env.SUBMISSION_DIR; \
+                if (!dirPath) { throw new Error(\"SUBMISSION_DIR env var not set\"); } \
+                await processSubmission(dirPath); \
+              }).catch(err => { \
+                console.error(\"Error processing directory '$SUBMISSION_DIR':\", err); \
+                process.exit(1); \
+              }); \
+            "'
           # Old loop:
           # echo "${{ steps.identify-submissions.outputs.submission_dirs }}" | while IFS= read -r submissionDir; do
           #   if [[ -z "$submissionDir" ]]; then continue; fi # Skip empty lines
