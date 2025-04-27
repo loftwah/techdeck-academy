@@ -23,7 +23,11 @@ describe('Email Utilities', () => {
         description: 'A test challenge description',
         type: 'coding',
         requirements: ['Requirement 1', 'Requirement 2'],
-        examples: ['Example 1', 'Example 2'],
+        examples: [
+          { type: 'text', content: 'Example 1' },
+          { type: 'text', content: 'Example 2' },
+          { type: 'code', content: 'console.log("Example 3 code")' }
+        ],
         hints: ['Hint 1'],
         difficulty: 3,
         topics: ['typescript', 'testing'],
@@ -36,6 +40,8 @@ describe('Email Utilities', () => {
       expect(result.html).toContain('A test challenge description')
       expect(result.html).toContain('Requirement 1')
       expect(result.html).toContain('Example 1')
+      expect(result.html).toContain('Example 2')
+      expect(result.html).toContain('Example 3 code')
       expect(result.html).toContain('Hint 1')
     })
   })

@@ -21,7 +21,10 @@ export const ChallengeSchema = z.object({
     description: z.string().min(1, { message: "Description is required" }),
     type: z.string(),
     requirements: z.array(z.string()).optional().default([]), // Optional array, defaults to empty
-    examples: z.array(z.string()).optional().default([]),
+    examples: z.array(z.object({
+      type: z.enum(['text', 'code']),
+      content: z.string()
+    })).optional().default([]),
     hints: z.array(z.string()).optional().default([]),
     difficulty: z.number().min(1).max(10), // Number between 1 and 10
     topics: z.array(z.string()).min(1, { message: "At least one topic is required" }),

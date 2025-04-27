@@ -17,11 +17,12 @@
 {{#if challenge.examples}}
 <h2>Examples</h2>
   {{#each challenge.examples}}
-    {{!-- Assuming examples might be code blocks or simple text --}}
-    {{#if this.isCodeBlock}}
+    {{!-- Use the new 'type' field to format correctly --}}
+    {{#if (eq this.type 'code')}}
       <pre style="background-color: #F7FAFC; padding: 16px; border-radius: 8px; overflow-x: auto;"><code>{{this.content}}</code></pre>
     {{else}}
-      <p>{{this}}</p>
+      {{!-- Assume 'text' type otherwise --}}
+      <ul><li>{{this.content}}</li></ul> {{!-- Wrap text examples in list items --}}
     {{/if}}
   {{/each}}
 {{else}}

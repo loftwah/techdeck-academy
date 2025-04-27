@@ -20,7 +20,7 @@ export interface Challenge {
   description: string
   type: string
   requirements?: string[]
-  examples?: string[]
+  examples?: { type: 'text' | 'code'; content: string }[]
   hints?: string[]
   difficulty: number
   topics: string[]

@@ -217,12 +217,12 @@ export async function generateChallengePrompt(
   "description": "string (Detailed description/question)",
   "type": "${selectedType}" | "coding" | "mcq" | "short_answer" | "iac" | "debugging", // Explicitly include selected type
   "requirements": "string[] | null (List of requirements/context)",
-  "examples": "string[] | null (Illustrative examples/options)",
+  "examples": "Array<{ type: 'text' | 'code', content: string }> | null (List of examples. Use 'text' for descriptive examples, 'code' for code snippets)",
   "hints": "string[] | null (Optional hints)",
   "difficulty": "number (1-10, matching requested difficulty: ${config.difficulty})",
   "topics": "string[] (List of relevant technical topics covered)"
 }
-Respond ONLY with this JSON object. Do not include any other text or markdown formatting. Ensure keys and values match the types specified (use null for optional missing fields).`;
+Respond ONLY with this JSON object. Do not include any other text or markdown formatting. Ensure keys and values match the types specified (use null for optional missing fields). Each example MUST have a 'type' field set to either 'text' or 'code'.`;
 
   return buildPrompt(
       null, // No specific persona needed for challenge generation
