@@ -51,7 +51,7 @@ jobs:
         run: |
           # Get current schedule from config
           SCHEDULE=$(node -e '
-            import("./dist/index.js").then(({config}) => {
+            import("./dist/src/index.mjs").then(({config}) => {
               console.log(config.schedule.challengeFrequency);
             }).catch(err => {
               console.error("Error reading schedule config:", err);
