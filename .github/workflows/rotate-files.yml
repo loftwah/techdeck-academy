@@ -51,11 +51,25 @@ jobs:
         if: steps.check-rotation.outputs.should_rotate == 'true'
         run: |
           echo "Rotation needed, performing rotation..."
-          # Add commands here to perform the actual rotation/archiving
-          # e.g., call another script: node dist/scripts/perform-rotation.js
-          # Or run git commands to commit changes
-          # Placeholder:
-          echo "Rotation logic would execute here."
+          # Define archive directory structure
+          ARCHIVE_SUB_DIR="archive/submissions/$(date +%Y-%m)"
+          mkdir -p "$ARCHIVE_SUB_DIR"
+          
+          echo "Archiving submission directories to $ARCHIVE_SUB_DIR"
+          # Find and move directories directly under submissions/
+          # Use find for robustness (handles empty dir, names with spaces etc.)
+          find submissions -mindepth 1 -maxdepth 1 -type d -exec mv -t "$ARCHIVE_SUB_DIR" {} +
+          
+          # Optionally, add logic for challenges and feedback if they also need rotation
+          # ARCHIVE_CHAL_DIR="archive/challenges/$(date +%Y-%m)"
+          # mkdir -p "$ARCHIVE_CHAL_DIR"
+          # find challenges -mindepth 1 -maxdepth 1 -type f -name '*.json' -exec mv -t "$ARCHIVE_CHAL_DIR" {} + 
+          
+          # ARCHIVE_FB_DIR="archive/feedback/$(date +%Y-%m)"
+          # mkdir -p "$ARCHIVE_FB_DIR"
+          # find feedback -mindepth 1 -maxdepth 1 -type f -name '*.json' -exec mv -t "$ARCHIVE_FB_DIR" {} +
+          
+          echo "Rotation actions complete."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Needed if committing changes
 
@@ -69,22 +83,30 @@ jobs:
         run: |
           # Create report directory if it doesn't exist
           mkdir -p progress/cleanup-reports
+          REPORT_FILE="progress/cleanup-reports/$(date +%Y-%m)-rotation.md"
+          ARCHIVE_DATE_DIR="$(date +%Y-%m)"
 
           # Generate report
           {
             echo "# File Rotation Report"
             echo "Date: $(date -u)"
             echo
-            echo "## Statistics"
-            echo "- Challenges: $(ls -1 challenges/*.json 2>/dev/null | wc -l) files"
-            echo "- Submissions: $(ls -1 submissions/*.json 2>/dev/null | wc -l) files"
-            echo "- Feedback: $(ls -1 feedback/*.json 2>/dev/null | wc -l) files"
+            echo "## Current File Counts (Before Archival)"
+            echo "*   Challenges: $(ls -1 challenges/*.json 2>/dev/null | wc -l) files"
+            # Count directories in submissions
+            echo "*   Submissions: $(find submissions -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l) directories"
+            echo "*   Feedback: $(ls -1 feedback/*.json 2>/dev/null | wc -l) files"
             echo
-            echo "## Archive Counts"
-            echo "- Archived Challenges: $(ls -1 archive/challenges/**/*.json 2>/dev/null | wc -l) files"
-            echo "- Archived Submissions: $(ls -1 archive/submissions/**/*.json 2>/dev/null | wc -l) files"
-            echo "- Archived Feedback: $(ls -1 archive/feedback/**/*.json 2>/dev/null | wc -l) files"
-          } > "progress/cleanup-reports/$(date +%Y-%m)-rotation.md"
+            echo "## Archive Counts (After Archival)"
+            echo "*   Archived Challenges: $(find archive/challenges -mindepth 1 -type f 2>/dev/null | wc -l) files" # Assuming challenges are files
+            # Count directories within the dated archive folders
+            echo "*   Archived Submissions: $(find archive/submissions -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l) directories"
+            echo "*   Archived Feedback: $(find archive/feedback -mindepth 1 -type f 2>/dev/null | wc -l) files" # Assuming feedback are files
+            echo
+            echo "Files/Directories were archived into directories named like \`archive/.../$ARCHIVE_DATE_DIR\`"
+          } > "$REPORT_FILE"
+          
+          echo "Rotation report generated at $REPORT_FILE"
 
       - name: Commit changes
         if: success() && steps.check-rotation.outputs.should_rotate == 'true'

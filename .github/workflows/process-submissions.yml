@@ -46,44 +46,63 @@ jobs:
         id: identify-submissions
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.submissionId }}" ]]; then
-            # Process specific submission
-            echo "submissions=${{ github.event.inputs.submissionId }}" >> $GITHUB_OUTPUT
+            # Process specific submission directory (assuming submissionId is the directory name)
+            echo "submission_dirs=submissions/${{ github.event.inputs.submissionId }}" >> $GITHUB_OUTPUT
           else
-            # Get newly added or modified submission files
-            SUBMISSIONS=$(git diff --name-only HEAD^ HEAD | grep '^submissions/.*\.json$' || true)
-            if [[ -z "$SUBMISSIONS" ]]; then
-              echo "No new submissions to process"
-              echo "submissions=" >> $GITHUB_OUTPUT
+            # Get unique parent directories of newly added or modified files within submissions/
+            # Exclude changes directly to the submissions/ directory itself or files directly within it (if any)
+            CHANGED_DIRS=$(git diff --name-only HEAD^ HEAD | grep '^submissions/.\+/' | sed 's|\(/[^/]*\)$||' | sort -u || true)
+            if [[ -z "$CHANGED_DIRS" ]]; then
+              echo "No new submission directories to process"
+              echo "submission_dirs=" >> $GITHUB_OUTPUT
             else
-              # Extract submission IDs
-              IDS=$(echo "$SUBMISSIONS" | sed 's/^submissions\/\(.*\)\.json$/\1/')
-              echo "submissions=$IDS" >> $GITHUB_OUTPUT
+              echo "Found changed submission directories:"
+              echo "$CHANGED_DIRS" # Log the directories found
+              # Output the list of directories, one per line
+              echo "submission_dirs=$(echo "$CHANGED_DIRS" | tr '\n' ' ')" >> $GITHUB_OUTPUT 
             fi
           fi
 
       - name: Process submissions
-        if: steps.identify-submissions.outputs.submissions != ''
+        if: steps.identify-submissions.outputs.submission_dirs != ''
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
-          # Initialize the application
+          # Initialize the application (assuming initialization is still needed once)
+          # Ensure dist/index.js is built if not already
+          if [ ! -f dist/index.js ]; then
+            echo "Building project..."
+            npm run build
+          fi
           node -e "
             import('./dist/index.js').then(async ({initialize}) => {
               await initialize();
-            });
+            }).catch(err => { console.error('Initialization failed:', err); process.exit(1); });
           "
 
-          # Process each submission
-          echo "${{ steps.identify-submissions.outputs.submissions }}" | while read -r submissionId; do
-            echo "Processing submission: $submissionId"
-            node -e "
-              import('./dist/index.js').then(async ({processSubmission}) => {
-                const submission = await import('./submissions/${submissionId}.json');
-                await processSubmission(submission.default);
-              });
-            "
-          done
+          # Process each submission directory
+          # Use xargs to handle potential spaces/newlines in directory names robustly
+          echo "${{ steps.identify-submissions.outputs.submission_dirs }}" | xargs -n 1 -I {} bash -c ' \
+            echo "Processing submission directory: {}"; \
+            node -e " \
+              import(\"./dist/index.js\").then(async ({processSubmission}) => { \
+                await processSubmission(\"{}\" ); \
+              }).catch(err => { console.error(\"Error processing directory {}:\", err); process.exit(1); }); \
+            '
+          # Old loop:
+          # echo "${{ steps.identify-submissions.outputs.submission_dirs }}" | while IFS= read -r submissionDir; do
+          #   if [[ -z "$submissionDir" ]]; then continue; fi # Skip empty lines
+          #   echo "Processing submission directory: $submissionDir"
+          #   # Assume processSubmission function now takes the directory path
+          #   node -e "
+          #     import('./dist/index.js').then(async ({processSubmission}) => {
+          #       // Pass the directory path to the processing function
+          #       await processSubmission('$submissionDir'); 
+          #     }).catch(err => { console.error('Error processing directory $submissionDir:', err); process.exit(1); });
+          #   "
+          # done
+
 
       - name: Commit submission and feedback
         if: success()
@@ -92,7 +111,12 @@ jobs:
           git config --local user.name "TechDeck Academy Bot"
           # Add the generated feedback, progress reports, updated profile AND ai-memory
           git add feedback/ progress/ student-profile.json ai-memory.md 
-          # Also add the original submission to the commit
+          # Also add the original submission directories/files to the commit
           git add submissions/
-          git commit -m "Process submission ${{ github.event.inputs.submissionFile }} and provide feedback" || echo "No changes to commit"
+          # Use a more generic commit message or try to extract submission identifier if needed
+          COMMIT_MSG="Process submissions and provide feedback"
+          # Optionally, add specific directory names if available and not too long
+          # SUB_DIRS_MSG=$(echo "${{ steps.identify-submissions.outputs.submission_dirs }}" | head -c 100) # Limit length
+          # if [[ -n "$SUB_DIRS_MSG" ]]; then COMMIT_MSG="Process submissions ($SUB_DIRS_MSG) and provide feedback"; fi
+          git commit -m "$COMMIT_MSG" || echo "No changes to commit"
           git push 
