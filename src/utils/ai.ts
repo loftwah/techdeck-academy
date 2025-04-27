@@ -423,25 +423,24 @@ export async function generateFeedback(
     improvementPath: feedbackJson.improvementPath ?? "Review suggestions and try applying them.", // Use default if missing
   };
 
-  // Validate the constructed object using Zod schema
-  // NOTE: FeedbackSchema expects submissionId. We need to either:
-  // 1. Add a temporary ID here for validation (and caller overwrites) - less clean
-  // 2. Modify ZodFeedbackSchema to make submissionId optional here and required later.
-  // 3. Create a different type/schema for AI output vs final saved Feedback.
-  // Let's go with option 1 for now, assuming the caller *will* overwrite it.
-  const tempValidationData = { ...feedbackData, submissionId: challengeId + '-temp-' + Date.now() }; 
+  // Construct the object to be validated
+  const finalFeedbackData = {
+      ...feedbackData, // Data from the AI
+      createdAt: feedbackData.createdAt || new Date().toISOString(), // Add timestamp if missing
+      // CORRECT: Use the original challengeId passed into the function for validation
+      submissionId: challengeId 
+  };
 
+  // Validate against Zod schema before returning
   try {
     // Use parse, which throws on error
-    const validatedFeedback = ZodFeedbackSchema.parse(tempValidationData);
+    const validatedFeedback = ZodFeedbackSchema.parse(finalFeedbackData);
     console.log(`Generated and validated feedback content for challenge: ${challengeId}`);
-    // Return the validated data *without* the temporary ID, letting the caller set the real one.
-    // Or, maybe easier, return the validated object and let caller overwrite submissionId.
-    return validatedFeedback; // Caller MUST overwrite submissionId
+    return validatedFeedback;
   } catch (error) {
     if (error instanceof ZodError) {
       console.error('Generated feedback data failed validation:', error.errors);
-      console.error('Data that failed validation:', tempValidationData);
+      console.error('Data that failed validation:', finalFeedbackData);
     } else if (error instanceof Error) {
       console.error('An unexpected error occurred during feedback validation:', error.message);
     } else {
