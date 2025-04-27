@@ -7,7 +7,7 @@ import * as summary from './utils/summary-manager.js'
 import * as profile from './utils/profile-manager.js'
 import { loadOrCreateAndSyncProfile, loadMentorProfile } from './utils/profile-manager.js'
 import { readAIMemoryRaw } from './utils/ai-memory-manager.js'
-import type { Challenge, Submission, StudentProfile } from './types.js'
+import type { Challenge, Submission, StudentProfile, Feedback } from './types.js'
 import path from 'path'
 import crypto from 'crypto'
 
@@ -112,44 +112,43 @@ async function processSubmission(submissionDirPath: string): Promise<void> {
   const aiMemory = await readAIMemoryRaw();
 
   // 4. Generate feedback using AI
-  // Note: We need to adapt ai.generateFeedback to accept content string + challenge ID
-  // instead of the old Submission object.
   console.log(`Generating feedback for ${challengeId}...`);
-  const feedback = await ai.generateFeedback(
-    challenge, // Pass the loaded challenge object
-    submissionContent, // Pass the combined content string
-    challengeId, // Pass the extracted challenge ID
+  // feedback object has the correct, original challengeId as submissionId and is validated
+  const feedback: Feedback = await ai.generateFeedback(
+    challenge, 
+    submissionContent,
+    challengeId, // Pass the original challenge ID
     aiMemory,
     config.mentorProfile
   );
-  console.log(`Feedback generated for submission ${challengeId}`);
+  console.log(`Feedback generated and validated for submission ${challengeId}`);
 
   // 5. Save the feedback
-  // We still need a unique ID for the feedback file. Using the challenge ID might
-  // cause overwrites if retried. Let's use challengeId + timestamp for feedback filename.
-  const feedbackId = `${challengeId}-${Date.now()}`; 
-  // Modify the feedback object to use this new ID before saving
-  const feedbackToSave = { ...feedback, submissionId: feedbackId }; 
-  await files.writeFeedback(feedbackToSave);
-  console.log(`Feedback saved as ${feedbackId}.json`);
+  // Create a unique ID *for the filename* using a timestamp.
+  const feedbackFilenameId = `${challengeId}-${Date.now()}`; 
+  // Create a new object specifically for writing to the file,
+  // overwriting the submissionId ONLY for the purpose of matching the filename derived by writeFeedback.
+  const feedbackDataForFile = { ...feedback, submissionId: feedbackFilenameId }; 
+  // Write the file. writeFeedback uses feedbackDataForFile.submissionId to determine the filename.
+  await files.writeFeedback(feedbackDataForFile);
+  console.log(`Feedback saved to file: ${feedbackFilenameId}.json`);
 
   // 6. Update Stats
-  // Adapt addSubmissionStats to accept needed info directly
-  const submittedAt = new Date().toISOString(); // Use current time as submission time
-  await stats.addSubmissionStats(challengeId, submittedAt, feedbackToSave); 
+  // Use the ORIGINAL feedback object with the correct submissionId (challengeId) for stats.
+  const submittedAt = new Date().toISOString(); 
+  await stats.addSubmissionStats(challengeId, submittedAt, feedback); // Pass original feedback 
   console.log(`Stats updated for ${challengeId}`);
 
   // 7. Update Profile
-  // updateProfileWithFeedback might need adjustment if it relied on the old Submission object
-  // For now, assume it primarily needs the challenge and feedback objects.
-  await profile.updateProfileWithFeedback(config, challenge, feedbackToSave);
+  // Use the ORIGINAL feedback object with the correct submissionId (challengeId) for profile update.
+  await profile.updateProfileWithFeedback(config, challenge, feedback); // Pass original feedback
   console.log(`Profile updated after feedback for ${challengeId}`);
 
   // 8. Format and send email
-  // Adapt formatFeedbackEmail call
+  // Use the ORIGINAL feedback object with the correct submissionId (challengeId) for the email.
   const emailContent = await email.formatFeedbackEmail(
-    feedbackToSave, // Pass the feedback object with the unique ID
-    challenge, // Pass the challenge object
+    feedback, // Pass original feedback
+    challenge,
     config.emailStyle
   );
   await email.sendEmail(config, emailContent);
