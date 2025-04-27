@@ -96,7 +96,7 @@ jobs:
             import path from "path";
             import fs from "fs/promises";
             import os from "os";
-            import { PATHS, fileExists } from "./dist/utils/files.js"; 
+            import { PATHS, fileExists } from "./dist/src/utils/files.mjs"; 
             
             async function hasOutstandingChallenge() {
               try {
@@ -146,7 +146,7 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: |
           node -e "
-            import('./dist/index.js').then(async ({initialize, generateChallenge, config, files, profile}) => {
+            import('./dist/src/index.mjs').then(async ({initialize, generateChallenge, config, files, profile}) => {
               const studentProfile = await initialize();
 
               // Check config flag OR profile status OR if challenges have already been completed
