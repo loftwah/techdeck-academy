@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/**/*.ts'], // Include all ts files in src
+  entry: ['src/**/*.ts', 'scripts/**/*.ts'], // Include all ts files in src AND scripts
   outDir: 'dist',
   format: ['esm'], // Output ESM format
   dts: true, // Generate declaration files
