@@ -2,9 +2,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import { z, ZodError, ZodType } from 'zod';
 
-// Define DATA_DIR relative to the project root
-const DATA_DIR = path.resolve(process.cwd(), 'data');
-
 export class FileNotFoundError extends Error {
   constructor(filePath: string) {
     super(`File not found: ${filePath}`);
@@ -49,7 +46,7 @@ export async function readJsonFileWithSchema<T>(
   relativeFilePath: string,
   schema: ZodType<T>
 ): Promise<T | null> {
-  const absolutePath = path.resolve(DATA_DIR, relativeFilePath);
+  const absolutePath = path.resolve(process.cwd(), relativeFilePath);
   let content: string;
   try {
     content = await fs.readFile(absolutePath, 'utf-8');
@@ -98,7 +95,7 @@ export async function writeJsonFileWithSchema<T>(
      throw new ZodError(validationResult.error.errors);
   }
 
-  const absolutePath = path.resolve(DATA_DIR, relativeFilePath);
+  const absolutePath = path.resolve(process.cwd(), relativeFilePath);
   try {
     await fs.mkdir(path.dirname(absolutePath), { recursive: true });
     const content = JSON.stringify(validationResult.data, null, 2); // Use validated data
