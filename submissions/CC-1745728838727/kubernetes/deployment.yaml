@@ -1,0 +1,30 @@
+# Placeholder Kubernetes Deployment manifest (deployment.yaml).
+# Manages the application Pods, ensuring a desired number of replicas are running.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app-deployment
+spec:
+  replicas: 2 # Start with 2 instances of the application for scalability
+  selector:
+    matchLabels:
+      app: demo-app # Selects Pods managed by this Deployment
+  template:
+    metadata:
+      labels:
+        app: demo-app # Labels applied to Pods created by this template
+    spec:
+      containers:
+      - name: demo-app
+        # Placeholder image - this would typically be an ECR repository URI
+        image: your-dockerhub-username/demo-app:latest
+        ports:
+        - containerPort: 3000 # The port the application listens on inside the container
+        # Add environment variables, volume mounts, readiness/liveness probes etc. here
+        # env:
+        # - name: DB_HOST
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: db-credentials
+        #       key: host 

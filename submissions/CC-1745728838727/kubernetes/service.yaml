@@ -1,0 +1,17 @@
+# Placeholder Kubernetes Service manifest (service.yaml).
+# Exposes the application Pods using a LoadBalancer.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-service
+spec:
+  selector:
+    app: demo-app # Selects Pods with the label "app: demo-app"
+  ports:
+    - protocol: TCP
+      port: 80 # Port the LoadBalancer listens on
+      targetPort: 3000 # Port the application containers listen on
+  # Type LoadBalancer tells the cloud provider (AWS) to provision an external load balancer
+  # This will get a public IP/DNS name.
+  type: LoadBalancer 
