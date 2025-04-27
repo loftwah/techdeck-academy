@@ -62,7 +62,6 @@ describe('Email Utilities', () => {
       };
       const result = await formatFeedbackEmail(
         testFeedback,
-        { challengeId: testChallenge.id },
         testChallenge,
         'technical'
       )
