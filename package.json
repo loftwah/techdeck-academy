@@ -6,13 +6,13 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsup",
-    "start": "node dist/index.js",
+    "start": "node dist/index.mjs",
     "dev": "tsx watch src/index.ts",
     "test": "node -r dotenv/config node_modules/.bin/vitest run",
     "test:watch": "node -r dotenv/config node_modules/.bin/vitest watch",
     "test:coverage": "node -r dotenv/config node_modules/.bin/vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "reset": "npm run build && node dist/scripts/reset-progress.js"
+    "reset": "npm run build && node dist/scripts/reset-progress.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",

@@ -4,6 +4,11 @@ export default defineConfig({
   entry: ['src/**/*.ts', 'scripts/**/*.ts'], // Include all ts files in src AND scripts
   outDir: 'dist',
   format: ['esm'], // Output ESM format
+  outExtension({ format }) {
+    return {
+      js: `.${format === 'esm' ? 'mjs' : 'cjs'}`,
+    }
+  },
   dts: true, // Generate declaration files
   splitting: false, // Keep things simple for now
   sourcemap: true, // Generate source maps
