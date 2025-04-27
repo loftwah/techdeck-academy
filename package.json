@@ -12,7 +12,7 @@
     "test:watch": "node -r dotenv/config node_modules/.bin/vitest watch",
     "test:coverage": "node -r dotenv/config node_modules/.bin/vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "reset": "npm run build && node dist/scripts/reset-progress.mjs"
+    "reset": "npm run build && node dist/src/scripts/reset-progress.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
