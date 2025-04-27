@@ -78,7 +78,7 @@ jobs:
             npm run build
           fi
           node -e "
-            import('./dist/index.js').then(async ({initialize}) => {
+            import('./dist/src/index.js').then(async ({initialize}) => {
               await initialize();
             }).catch(err => { console.error('Initialization failed:', err); process.exit(1); });
           "
@@ -88,7 +88,7 @@ jobs:
           echo "${{ steps.identify-submissions.outputs.submission_dirs }}" | xargs -n 1 -I {} bash -c ' \
             echo "Processing submission directory: {}"; \
             node -e " \
-              import(\"./dist/index.js\").then(async ({processSubmission}) => { \
+              import(\"./dist/src/index.js\").then(async ({processSubmission}) => { \
                 await processSubmission(\"{}\" ); \
               }).catch(err => { console.error(\"Error processing directory {}:\", err); process.exit(1); }); \
             '
