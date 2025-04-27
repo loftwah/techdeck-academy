@@ -85,8 +85,8 @@ jobs:
         if: steps.find_letters.outputs.files != ''
         run: |
           echo "Processing letters: ${{ steps.find_letters.outputs.files }}"
-          # Assume the script returns non-zero on error, or we can modify it later
-          node dist/scripts/process-letters.js ${{ steps.find_letters.outputs.files }} && echo "processed=true" >> $GITHUB_OUTPUT
+          
+          node dist/src/scripts/process-letters.mjs ${{ steps.find_letters.outputs.files }} && echo "processed=true" >> $GITHUB_OUTPUT
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
