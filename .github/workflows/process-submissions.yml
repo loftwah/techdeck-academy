@@ -65,6 +65,11 @@ jobs:
             fi
           fi
 
+      - name: List challenges directory contents
+        run: |
+          echo "Listing contents of challenges/ directory:"
+          ls -la challenges/
+
       - name: Process submissions
         if: steps.identify-submissions.outputs.submission_dirs != ''
         env:
