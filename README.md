@@ -92,7 +92,55 @@ techdeck-academy/
 5.  **First Letter (if `introductionSubmitted: false`):** Create `.md` file in `letters/to-mentor/` with intro/goals. Commit & push. (This activates challenge generation).
 6.  **Submit Challenge:** Once you receive a challenge, create a directory in `submissions/` named after the challenge ID (e.g., `submissions/CC-123/`). Place your solution files inside this directory. Commit & push.
 7.  **Commit & Push Config:** Commit `config.ts` (and `.gitignore` if `.env` added). Push.
-8.  **Enable & Understand Actions:** Check Actions tab. `send-challenge.yml` needs `status: 'active'` (set after first letter OR via `introductionSubmitted: true`). `process-submissions.yml` triggers on pushes to `submissions/**`. Use `workflow_dispatch` for manual runs if needed.
+8.  **Enable & Understand Actions:** Check Actions tab. `send-challenge.yml` needs `status: 'active'` (set after first letter OR via `introductionSubmitted: true`). `process-submissions.yml` triggers **only** on pushes to the `main` branch affecting `submissions/**`. Use `workflow_dispatch` for manual runs if needed.
+
+## Important: Submission Workflow using Branches
+
+To ensure your submission is only processed when it's complete, follow these steps precisely:
+
+1.  **Why:** The `process-submissions` workflow automatically starts grading your submission *immediately* when changes are detected in the `submissions/` directory **on the `main` branch**. Pushing incomplete work directly to `main` will result in that incomplete work being graded.
+
+2.  **Recommended Workflow:**
+    *   Always start by ensuring your local `main` branch is up-to-date:
+      ```bash
+      git checkout main
+      git pull origin main
+      ```
+    *   Create a dedicated branch for your submission. Replace `CHALLENGE_ID` with the actual ID (e.g., `CC-123`):
+      ```bash
+      git checkout -b submit-CHALLENGE_ID 
+      ```
+    *   Work on your solution files within the correct submission directory (e.g., `submissions/CHALLENGE_ID/`).
+    *   Commit your changes frequently on your feature branch:
+      ```bash
+      # Make changes...
+      git add submissions/CHALLENGE_ID/
+      git commit -m "Work on submission CHALLENGE_ID - detail of changes"
+      ```
+    *   (Optional but recommended) Push your branch to GitHub for backup:
+      ```bash
+      git push -u origin submit-CHALLENGE_ID
+      ```
+    *   Repeat the editing, adding, and committing steps until your submission is fully complete.
+
+3.  **Submitting Your Work:** Only when your submission is 100% ready for grading:
+    *   Switch back to the `main` branch:
+      ```bash
+      git checkout main
+      ```
+    *   Ensure `main` is still up-to-date:
+      ```bash
+      git pull origin main
+      ```
+    *   Merge your completed feature branch into `main`:
+      ```bash
+      git merge submit-CHALLENGE_ID
+      ```
+      *(Handle any merge conflicts if they occur.)*
+    *   Push the `main` branch to GitHub. This push will trigger the grading workflow:
+      ```bash
+      git push origin main
+      ```
 
 ## 🔄 Resetting Your Progress
 

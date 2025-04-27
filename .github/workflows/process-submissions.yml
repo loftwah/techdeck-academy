@@ -6,6 +6,8 @@ permissions:
 
 on:
   push:
+    branches:
+      - main
     paths:
       - 'submissions/**'
   
@@ -13,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       submissionId:
-        description: 'Specific submission ID to process'
+        description: 'Specific submission directory name to process (e.g., CC-123)'
         required: false
         type: string
 
